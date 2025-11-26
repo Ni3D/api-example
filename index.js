@@ -3,6 +3,15 @@ const router  = require('./app/router')
 const morgan  = require('morgan');
 const dotenv  = require('dotenv').config();
 
+const { sequelize } = require('./app/models');
+
+(async () => {
+    await sequelize
+        .authenticate()
+        .then(() => console.log('Connection OK.'))
+        .catch((error) => console.error('Connection FAILED:', error.message));
+})();
+
 const app = express();
 
 const port = process.env.APP_PORT;
