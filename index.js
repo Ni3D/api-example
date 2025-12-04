@@ -5,17 +5,14 @@ const dotenv  = require('dotenv').config();
 
 const { sequelize } = require('./app/models');
 
-(async () => {
-    await sequelize
-        .authenticate()
-        .then(() => console.log('Connection to database: OK.'))
-        .catch((error) => console.error('Connection to database: FAILED:', error.message));
-})();
-
 const app = express();
 
 const port = process.env.APP_PORT;
 const host = process.env.APP_HOST;
+
+// Middleware для парсинга json
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 app.use(morgan('combined'))
 

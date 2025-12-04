@@ -11,7 +11,7 @@
     "type": "git",
     "url": "git+https://github.com/Ni3D/api-example.git"
   },
-  "author": "",
+  "author": "Ni3D",
   "license": "ISC",
   "bugs": {
     "url": "https://github.com/Ni3D/api-example/issues"
@@ -19,6 +19,7 @@
   "homepage": "https://github.com/Ni3D/api-example#readme",
   "description": "",
   "dependencies": {
+    "bcrypt": "^6.0.0",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
     "morgan": "^1.10.1",
