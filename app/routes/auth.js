@@ -1,6 +1,10 @@
-const express =        require('express');
-const authRouter =      express.Router();
+const express        = require('express');
+const authRouter     = express.Router();
 const authController = require('../controllers/authController');
+const parseBody      = require('../middleware/parseBody');
+
+// Применяем middleware для парсинга JSON
+authRouter.use(parseBody)
 
 // Маршруты AUTH
 authRouter.post('/signup',           authController.signupUser)

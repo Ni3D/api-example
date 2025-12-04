@@ -1,14 +1,16 @@
-const bcrypt = require('bcrypt');
+const bcrypt   = require('bcrypt');
 const { User } = require('../models');
 
 module.exports.signupUser = async (req, res) => {
+    
+    // Получение данных из тела запроса
     const { email, password, name } = req.body;
     
     // Хэширование пароля
     const saltRounds = 10;
     const passwordHash = await bcrypt.hash(password, saltRounds);
     
-    // Создание пользователя
+    // Создание пользователя в базе данных
     const user = await User.create({
         email,
         passwordHash,

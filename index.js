@@ -10,10 +10,6 @@ const app = express();
 const port = process.env.APP_PORT;
 const host = process.env.APP_HOST;
 
-// Middleware для парсинга json
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
 app.use(morgan('combined'))
 
 router(app);
