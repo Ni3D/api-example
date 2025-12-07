@@ -1,5 +1,6 @@
 const bcrypt = require('bcrypt');
-const { User } = require('../models');
+const { User, RefreshToken } = require('../models');
+const JWTService = require('../services/jwt');
 
 // Регистрация пользователя
 module.exports.signupUser = async (req, res) => {
@@ -81,6 +82,18 @@ module.exports.signinUser = async (req, res) => {
             });
         }
 
+        // Генерация токенов
+        const accessToken  = JWTService.generateAccessToken(user);
+        const refreshToken = JWTService.generateRefreshToken(user);
+
+        // Сохранение refresh токена в базу данных
+        await RefreshToken.create({
+            userId: user.id,
+            token: refreshToken,
+            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 дней
+            isRevoked: false
+        });
+
         // Формирование ответа
         const data = {
             user: {
@@ -93,6 +106,10 @@ module.exports.signinUser = async (req, res) => {
                 isBlocked: user.isBlocked,
                 createdAt: user.createdAt,
                 updatedAt: user.updatedAt
+            },
+            tokens: {
+                accessToken,
+                refreshToken
             }
         };
 
