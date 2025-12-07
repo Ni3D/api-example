@@ -11,12 +11,12 @@ module.exports = (sequelize, DataTypes) => {
      */
     static associate(models) {
       // define association here
-      
+
       User.hasMany(models.Task, {
         foreignKey: 'assigneeId',
         as: 'AssignedTasks'
       });
-      
+
       User.hasMany(models.Task, {
         foreignKey: 'createdById',
         as: 'CreatedTasks'
@@ -39,14 +39,30 @@ module.exports = (sequelize, DataTypes) => {
   User.init({
     email: {
       type: DataTypes.STRING,
+      allowNull: false,
       unique: true
     },
-    passwordHash: DataTypes.STRING,
-    name: DataTypes.STRING,
-    role: DataTypes.ENUM('user', 'admin'),
+    passwordHash: {
+      type: DataTypes.STRING,
+      allowNull: false
+    },
+    name: {
+      type: DataTypes.STRING,
+      allowNull: false
+    },
+    role: {
+      type: DataTypes.ENUM('user', 'admin'),
+      defaultValue: 'user'
+    },
     avatarUrl: DataTypes.STRING,
-    isEmailVerified: DataTypes.BOOLEAN,
-    isBlocked: DataTypes.BOOLEAN
+    isEmailVerified: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false
+    },
+    isBlocked: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false
+    }
   }, {
     sequelize,
     timestamps: true,
