@@ -1,45 +1,77 @@
 const bcrypt = require('bcrypt');
 const { User, RefreshToken } = require('../models');
 const JWTService = require('../services/jwt');
+const { where } = require('sequelize');
 
 // Регистрация пользователя
 module.exports.signupUser = async (req, res) => {
+    try {
+        // Получение данных из тела запроса
+        const { email, password, name } = req.body;
 
-    // Получение данных из тела запроса
-    const { email, password, name } = req.body;
+        // Проверка наличия email, пароля и имени
+        if (!email || !password || !name) {
+            return res.status(400).json({
+                "message": "Email, пароль и имя обязательны",
+                "errCode": 1,
+                "data": null
+            });
+        }
 
-    // Хэширование пароля
-    const saltRounds = 10;
-    const passwordHash = await bcrypt.hash(password, saltRounds);
+        // Поиск email в базе перед регистрацией
+        const emailCheck = await User.findOne({ where: { email } });
+        
+        if (emailCheck) {
+            return res.status(401).json({
+                "message": "Пользователь с данным email уже зарегистрирован",
+                "errCode": 1,
+                "data": null
+            });
+        }
+        
+        // Хэширование пароля
+        const saltRounds = 10;
+        const passwordHash = await bcrypt.hash(password, saltRounds);
+        
+        // Создание пользователя в базе данных
+        const user = await User.create({
+            email,
+            passwordHash,
+            name,
+            role: 'user',
+            isEmailVerified: false,
+            isBlocked: false
+        });
 
-    // Создание пользователя в базе данных
-    const user = await User.create({
-        email,
-        passwordHash,
-        name,
-        role: 'user',
-        isEmailVerified: false,
-        isBlocked: false
-    });
+        // Ответ от сервера
+        const data = {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            role: user.role,
+            avatarUrl: user.avatarUrl,
+            isEmailVerified: user.isEmailVerified,
+            isBlocked: user.isBlocked,
+            createdAt: user.createdAt,
+            updatedAt: user.updatedAt
+        };
 
-    // Ответ от сервера
-    const data = {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        avatarUrl: user.avatarUrl,
-        isEmailVerified: user.isEmailVerified,
-        isBlocked: user.isBlocked,
-        createdAt: user.createdAt,
-        updatedAt: user.updatedAt
-    };
-    res.status(201).json({ "message": "Регистрация пользователя успешна.", "errCode": 0, "data": data });
+        res.status(201).json({ "message": "Регистрация пользователя успешна.", "errCode": 0, "data": data });
+
+    } catch (error) {
+        console.error('Ошибка при регистрации:', error);
+        res.status(500).json({
+            "message": "Ошибка сервера при регистрации",
+            "errCode": 1,
+            "data": null
+        });
+    }
 }
 
 // Аутентификация пользователя
 module.exports.signinUser = async (req, res) => {
     try {
+        // Получение данных из тела запроса
         const { email, password } = req.body;
 
         // Проверка наличия email и пароля
