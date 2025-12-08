@@ -1,7 +1,8 @@
 const bcrypt = require('bcrypt');
+const { Op } = require('sequelize');
 const { User, RefreshToken, sequelize } = require('../models');
 const JWTService = require('../services/jwt');
-const { Op } = require('sequelize');
+const { token } = require('morgan');
 
 // Регистрация пользователя
 module.exports.signupUser = async (req, res) => {
@@ -14,7 +15,6 @@ module.exports.signupUser = async (req, res) => {
             return res.status(400).json({
                 "message": "Email, пароль и имя обязательны",
                 "errCode": 1,
-                "data": null
             });
         }
 
@@ -25,7 +25,6 @@ module.exports.signupUser = async (req, res) => {
             return res.status(409).json({
                 "message": "Пользователь с данным email уже зарегистрирован",
                 "errCode": 1,
-                "data": null
             });
         }
         
@@ -56,14 +55,17 @@ module.exports.signupUser = async (req, res) => {
             updatedAt: user.updatedAt
         };
 
-        res.status(201).json({ "message": "Регистрация пользователя успешна.", "errCode": 0, "data": data });
+        res.status(201).json({
+            "message": "Регистрация пользователя успешна.",
+            "errCode": 0,
+            "data": data
+        });
 
     } catch (error) {
         console.error('Ошибка при регистрации:', error);
         res.status(500).json({
             "message": "Ошибка сервера при регистрации",
             "errCode": 1,
-            "data": null
         });
     }
 }
@@ -79,7 +81,6 @@ module.exports.signinUser = async (req, res) => {
             return res.status(400).json({
                 "message": "Email и пароль обязательны",
                 "errCode": 1,
-                "data": null
             });
         }
 
@@ -90,7 +91,6 @@ module.exports.signinUser = async (req, res) => {
             return res.status(401).json({
                 "message": "Неверный email или пароль",
                 "errCode": 1,
-                "data": null
             });
         }
 
@@ -101,7 +101,6 @@ module.exports.signinUser = async (req, res) => {
             return res.status(401).json({
                 "message": "Неверный email или пароль",
                 "errCode": 1,
-                "data": null
             });
         }
 
@@ -110,10 +109,17 @@ module.exports.signinUser = async (req, res) => {
             return res.status(403).json({
                 "message": "Пользователь заблокирован",
                 "errCode": 1,
-                "data": null
             });
         }
-        
+
+        // Удаление просроченных токенов
+        await RefreshToken.destroy({
+            where: {
+                userId: user.id,
+                expiresAt: { [Op.lt]: new Date() }
+            }
+        });
+
         // Удаление отозванных токенов
         await RefreshToken.destroy({
             where: {
@@ -122,7 +128,7 @@ module.exports.signinUser = async (req, res) => {
             }
         });
 
-        // Ограничение: максимум 5 активных токена на пользователя
+        // Ограничение: максимум 5 активных токенов на пользователя
         const maxTokensPerUser = 5;
         
         // Получаем текущее количество активных токенов
@@ -192,7 +198,60 @@ module.exports.signinUser = async (req, res) => {
         res.status(500).json({
             "message": "Ошибка сервера при аутентификации",
             "errCode": 1,
-            "data": null
+        });
+    }
+}
+
+module.exports.signoutUser = async (req, res) => {
+    try {
+        // Получаем refresh токен из тела запроса
+        const { refreshToken } = req.body;
+
+        // Проверяем передан ли токен
+        if (!refreshToken) {
+            return res.status(400).json({
+                "message": "Refresh токен обязателен для выхода",
+                "errCode": 1,
+            });
+        }
+
+        // Ищем неотозванный токен в базе
+        const tokenCheck = await RefreshToken.findOne({
+            where: {
+                token: refreshToken,
+                isRevoked: false
+            }
+        });
+
+        // Отвечаем если токен не найден или отозван
+        if (!tokenCheck) {
+            return res.status(404).json({
+                "message": "Токен не найден или уже отозван",
+                "errCode": 1,
+            });
+        }
+
+        // Отзываем токен
+        await tokenCheck.update({ isRevoked: true });
+
+        // Удаляем отозванные токены
+        await RefreshToken.destroy({
+            where: {
+                userId: tokenCheck.userId,
+                isRevoked: true
+            }
+        });
+
+        res.status(200).json({
+            "message": "Выход выполнен успешно",
+            "errCode": 0,
+        });
+
+    } catch (error) {
+        console.error('Ошибка при выходе:', error);
+        res.status(500).json({
+            "message": "Ошибка сервера при выходе",
+            "errCode": 1,
         });
     }
 }

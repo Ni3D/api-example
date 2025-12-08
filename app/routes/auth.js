@@ -9,6 +9,7 @@ authRouter.use(parseBody)
 // Маршруты AUTH
 authRouter.post('/signup',           authController.signupUser)
 authRouter.post('/signin',           authController.signinUser)
+authRouter.post('/signout',          authController.signoutUser)
 authRouter.post('/recovery/request', authController.recoveryRequest)
 authRouter.post('/recovery/reset',   authController.recoveryReset)
 authRouter.get('/verify',            authController.verifyEmail)
