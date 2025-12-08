@@ -1,7 +1,7 @@
 const bcrypt = require('bcrypt');
-const { User, RefreshToken } = require('../models');
+const { User, RefreshToken, sequelize } = require('../models');
 const JWTService = require('../services/jwt');
-const { where } = require('sequelize');
+const { Op } = require('sequelize');
 
 // Регистрация пользователя
 module.exports.signupUser = async (req, res) => {
@@ -9,7 +9,7 @@ module.exports.signupUser = async (req, res) => {
         // Получение данных из тела запроса
         const { email, password, name } = req.body;
 
-        // Проверка наличия email, пароля и имени
+        // Проверка наличия email, пароля и имени в запросе
         if (!email || !password || !name) {
             return res.status(400).json({
                 "message": "Email, пароль и имя обязательны",
@@ -18,11 +18,11 @@ module.exports.signupUser = async (req, res) => {
             });
         }
 
-        // Поиск email в базе перед регистрацией
+        // Поиск указанного email в базе перед регистрацией
         const emailCheck = await User.findOne({ where: { email } });
         
         if (emailCheck) {
-            return res.status(401).json({
+            return res.status(409).json({
                 "message": "Пользователь с данным email уже зарегистрирован",
                 "errCode": 1,
                 "data": null
@@ -112,6 +112,42 @@ module.exports.signinUser = async (req, res) => {
                 "errCode": 1,
                 "data": null
             });
+        }
+        
+        // Удаление отозванных токенов
+        await RefreshToken.destroy({
+            where: {
+                userId: user.id,
+                isRevoked: true
+            }
+        });
+
+        // Ограничение: максимум 5 активных токена на пользователя
+        const maxTokensPerUser = 5;
+        
+        // Получаем текущее количество активных токенов
+        const activeTokens = await RefreshToken.count({
+            where: {
+                userId: user.id,
+                isRevoked: false,
+                expiresAt: { [Op.gt]: new Date() }
+            }
+        });
+
+        // Если достигли лимита, удаляем самый старый токен
+        if (activeTokens >= maxTokensPerUser) {
+            const oldestToken = await RefreshToken.findOne({
+                where: {
+                    userId: user.id,
+                    isRevoked: false,
+                    expiresAt: { [Op.gt]: new Date() }
+                },
+                order: [['createdAt', 'ASC']]
+            });
+
+            if (oldestToken) {
+                await oldestToken.destroy();
+            }
         }
 
         // Генерация токенов
