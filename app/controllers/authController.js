@@ -1,8 +1,8 @@
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
-const { Op, Model } = require('sequelize');
-const { User, RefreshToken, EmailVerificationToken, sequelize } = require('../models');
-const JWTService = require('../services/jwt');
+const { Op } = require('sequelize');
+const { User, RefreshToken, EmailVerificationToken, PasswordResetToken } = require('../models');
+const JWTService   = require('../services/jwt');
 const EmailService = require('../services/emailService');
 
 // Регистрация пользователя
@@ -50,7 +50,7 @@ module.exports.signupUser = async (req, res) => {
         await EmailVerificationToken.create({
             userId: user.id,
             token: verificationToken,
-            expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), 
+            expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 часа
             usedAt: null
         });
 
@@ -80,7 +80,8 @@ module.exports.signupUser = async (req, res) => {
         };
 
         res.status(201).json({
-            "message": "Регистрация пользователя успешна.",
+            "message": "Регистрация успешна! Подтвердите учетную запись, " +
+                       "перейдя по ссылке из письма, отправленного на указанный почтовый ящик.",
             "errCode": 0,
             "data": data
         });
@@ -221,6 +222,7 @@ module.exports.signinUser = async (req, res) => {
     }
 }
 
+// Выход пользователя
 module.exports.signoutUser = async (req, res) => {
     try {
         // Получаем refresh токен из тела запроса
@@ -276,10 +278,13 @@ module.exports.signoutUser = async (req, res) => {
     }
 }
 
+// Подтверждение email
 module.exports.verifyEmail = async (req, res) => {
     try {
+        // Получаем токен из запроса
         const { token } = req.query;
 
+        // Проверяем есть токен в запросе
         if (!token) {
             return res.status(400).json({
                 "message": "Токен подтверждения обязателен",
@@ -351,17 +356,248 @@ module.exports.verifyEmail = async (req, res) => {
     }
 }
 
-module.exports.verifyEmailResend = (req, res) => {
-    const data = [];
-    res.status(200).json({ "message": "Повторная отправка письма подтверждения email", "errCode": 0, "data": data })
+// Повторный запрос на подтвреждение email
+module.exports.verifyEmailResend = async (req, res) => {
+    try {
+        // Получаем email из тела запроса
+        const { email } = req.body;
+
+        // Проверяем наличие email в запросе
+        if (!email) {
+            return res.status(400).json({
+                "message": "Необходимо указать Email.",
+                "errCode": 1
+            });
+        }
+
+        // Ищем пользователя по email в базе
+        const user = await User.findOne({ where: { email } });
+
+        // Если пользователь не найден - сообщаем об этом
+        if (!user) {
+            return res.status(200).json({
+                "message": "Пользователь с таким Email не найден",
+                "errCode": 0
+            });
+        }
+
+        // Проверяем, подтвержден ли уже email
+        if (user.isEmailVerified) {
+            return res.status(400).json({
+                "message": "Email уже подтвержден",
+                "errCode": 1
+            });
+        }
+
+        // Удаляем старые непросроченные токены подтверждения email
+        await EmailVerificationToken.destroy({
+            where: {
+                userId: user.id,
+                usedAt: null,
+                expiresAt: { [Op.gt]: new Date() }
+            }
+        });
+
+        // Генерируем новый токен
+        const verificationToken = crypto.randomBytes(32).toString('hex');
+
+        // Сохраняем новый токен в базу
+        await EmailVerificationToken.create({
+            userId: user.id,
+            token: verificationToken,
+            expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 часа
+            usedAt: null
+        });
+
+        // Формируем ссылку для подтверждения
+        const verificationLink = `${process.env.APP_URL}/api/v1/auth/verify?token=${verificationToken}`;
+
+        // Отправляем email
+        EmailService.sendVerificationEmail(email, user.name, verificationLink)
+            .then(result => {
+                console.log('Повторное письмо с подтверждением отправлено:', result);
+            })
+            .catch(error => {
+                console.error('Ошибка отправки повторного письма:', error);
+            });
+
+        // Ответ сервера
+        res.status(200).json({
+            "message": "Письмо с подтверждением отправлено",
+            "errCode": 0
+        });
+
+    } catch (error) {
+        console.error('Ошибка при повторной отправке письма:', error);
+        res.status(500).json({
+            "message": "Ошибка сервера при отправке письма",
+            "errCode": 1
+        });
+
+    }
 }
 
-module.exports.recoveryRequest = (req, res) => {
-    const data = [];
-    res.status(200).json({ "message": "Запрос восстановления пароля", "errCode": 0, "data": data })
+// Запрос на восстановление пароля
+module.exports.recoveryRequest = async (req, res) => {
+    try {
+        // Получаем email из тела запроса
+        const { email } = req.body
+
+        // Проверяем наличие email в базе
+        if (!email) {
+            return res.status(400).json({
+                "message": "Email обязателен для восстановления пароля",
+                "errCode": 1
+            });
+        }
+
+        // Ищем пользователя по email в базе
+        const user = await User.findOne({ where: { email } });
+
+        // Если пользователь не найден - сообщаем об этом
+        if (!user) {
+            return res.status(200).json({
+                "message": "Пользователь с таким Email не найден",
+                "errCode": 0
+            });
+        }
+
+        // Проверяем, не заблокирован ли пользователь
+        if (user.isBlocked) {
+            return res.status(403).json({
+                "message": "Пользователь заблокирован",
+                "errCode": 1
+            });
+        }
+
+        // Удаляем старый токен восстановления
+        await PasswordResetToken.destroy({
+            where: {
+                userId: user.id,
+                usedAt: null,
+                expiresAt: { [Op.gt]: new Date() }
+            }
+        });
+
+        // Генерируем токен восстановления
+        const resetToken = crypto.randomBytes(32).toString('hex');
+
+        // Сохраняем токен в базу
+        await PasswordResetToken.create({
+            userId: user.id,
+            token: resetToken,
+            expiresAt: new Date(Date.now() + 60 * 60 * 1000), // 1 час
+            usedAt: null
+        });
+
+        // Формируем ссылку для сброса пароля
+        const resetLink = `${process.env.APP_URL}/recovery/request?token=${resetToken}`;
+
+        // Отправляем email для сброса пароля
+        EmailService.sendPasswordResetEmail(email, user.name, resetLink)
+            .then(result => {
+                console.log('Письмо для сброса пароля отправлено:', result);
+            })
+            .catch(error => {
+                console.error('Ошибка отправки письма:', error);
+            });
+        
+        //Ответ от сервера
+        res.status(200).json({
+            "message": "Инструкции по восстановлению пароля отправлены на email",
+            "errCode": 0
+        });
+    } catch (error) {
+        console.error('Ошибка при запросе восстановления пароля:', error);
+        res.status(500).json({
+            "message": "Ошибка сервера при запросе восстановления пароля",
+            "errCode": 1
+        });
+    }
 }
 
-module.exports.recoveryReset = (req, res) => {
-    const data = [];
-    res.status(200).json({ "message": "Сброс пароля по токену", "errCode": 0, "data": data })
+// Сброс пароля
+module.exports.recoveryReset = async (req, res) => {
+    try {
+        // Получаем токен восстановления и новый пароль из тела запроса
+        const { token, newPassword } = req.body;
+
+        // Проверяем наличие токена и нового пароля
+        if (!token || !newPassword) {
+            return res.status(400).json({
+                "message": "Токен и новый пароль обязательны",
+                "errCode": 1
+            });
+        }
+
+        // Ищем токен в базе
+        const resetToken = await PasswordResetToken.findOne({
+            where: {
+                token: token,
+                usedAt: null,
+                expiresAt: { [Op.gt]: new Date() }
+            },
+            include: [{ model: User }]
+        });
+
+        if (!resetToken) {
+            return res.status(400).json({
+                "message": "Недействительный токен",
+                "errCode": 1
+            });
+        }
+
+        // Проверяем, заблокирован ли пользователь
+        if (resetToken.User.isBlocked) {
+            return res.status(403).json({
+                "message": "Пользователь заблокирован",
+                "errCode": 1
+            });
+        }
+
+        // Хэшируем новый пароль
+        const saltRounds = 10;
+        const newPasswordHash = await bcrypt.hash(newPassword, saltRounds);
+
+        // Обновляем пароль пользователя
+        await resetToken.User.update({
+            passwordHash: newPasswordHash
+        });
+
+        // Помечаем токен как использованный
+        await resetToken.update({ usedAt: new Date() });
+
+        // Удаляем все refresh токены пользователя
+        await RefreshToken.destroy({
+            where: { userId: resetToken.User.id } });
+
+        // Удаляем все активные токены восстановления пользователя
+        await PasswordResetToken.destroy({
+            where: {
+                userId: resetToken.User.id,
+                usedAt: null,
+                expiresAt: { [Op.gt]: new Date() }
+            }
+        });
+
+        // Ответ сервера
+        const data = {
+            userId: resetToken.User.id,
+            email: resetToken.User.email,
+            name: resetToken.User.name
+        };
+
+        res.status(200).json({
+            "message": "Пароль успешно изменен",
+            "errCode": 0,
+            "data": data
+        });
+
+    } catch (error) {
+        console.error('Ошибка при сбросе пароля:', error);
+        res.status(500).json({
+            "message": "Ошибка сервера при сбросе пароля",
+            "errCode": 1
+        });
+    }
 }
