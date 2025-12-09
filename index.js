@@ -8,8 +8,8 @@ const { sequelize } = require('./app/models');
 (async () => {
     await sequelize
         .authenticate()
-        .then(() => console.log('Connection to database OK.'))
-        .catch((error) => console.error('Connection to database FAILED:', error.message));
+        .then(() => console.log('Подключение к базе данных: ОК.'))
+        .catch((error) => console.error('Подключение к базе данных: FAILED:', error.message));
 })();
 
 const app = express();

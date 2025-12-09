@@ -1,8 +1,9 @@
 const bcrypt = require('bcrypt');
-const { Op } = require('sequelize');
-const { User, RefreshToken, sequelize } = require('../models');
+const crypto = require('crypto');
+const { Op, Model } = require('sequelize');
+const { User, RefreshToken, EmailVerificationToken, sequelize } = require('../models');
 const JWTService = require('../services/jwt');
-const { token } = require('morgan');
+const EmailService = require('../services/emailService');
 
 // Регистрация пользователя
 module.exports.signupUser = async (req, res) => {
@@ -41,6 +42,29 @@ module.exports.signupUser = async (req, res) => {
             isEmailVerified: false,
             isBlocked: false
         });
+
+        // Генерация токена для подтверждения email
+        const verificationToken = crypto.randomBytes(32).toString('hex');
+
+        // Сохранение токена для подтверждения email в базу
+        await EmailVerificationToken.create({
+            userId: user.id,
+            token: verificationToken,
+            expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), 
+            usedAt: null
+        });
+
+        // Формируем ссылку для подтверждения
+        const verificationLink = `${process.env.APP_URL}/api/v1/auth/verify?token=${verificationToken}`;
+
+        // Отправляем email с подтверждением
+        EmailService.sendVerificationEmail(email, name, verificationLink)
+            .then(result => {
+                console.log('Письмо с подтверждением отправлено:', result);
+            })
+            .catch(error => {
+                console.error('Ошибка отправки письма:', error);
+            });
 
         // Ответ от сервера
         const data = {
@@ -256,6 +280,84 @@ module.exports.signoutUser = async (req, res) => {
     }
 }
 
+module.exports.verifyEmail = async (req, res) => {
+    try {
+        const { token } = req.query;
+
+        if (!token) {
+            return res.status(400).json({
+                "message": "Токен подтверждения обязателен",
+                "errCode": 1
+            });
+        }
+
+        // Ищем токен в базе
+        const verificationToken = await EmailVerificationToken.findOne({
+            where: {
+                token: token,
+                usedAt: null,
+                expiresAt: { [Op.gt]: new Date() }
+            },            
+            include: [{ model: User }]
+        });
+
+        if (!verificationToken) {
+            return res.status(400).json({
+                "message": "Недействительный или просроченный токен",
+                'errCode': 1
+            });
+        }
+
+        // Проверяем, не подтвержден ли уже email
+        if (verificationToken.User.isEmailVerified) {
+            await verificationToken.update({ usedAt: new Date() });
+
+            return res.status(200).json({
+                "message": "Email уже подтвержден",
+                "errCode": 0,
+            });
+        }
+
+        // Помечаем email как подтвержденный
+        await verificationToken.User.update({ isEmailVerified: true });
+
+        // Помечаем токен как использованный
+        await verificationToken.update({ usedAt: new Date() });
+
+        // Удаляем все старые токены пользователя
+        await EmailVerificationToken.destroy({
+            where: {
+                userId: verificationToken.User.id,
+                usedAt: null,
+                expiresAt: { [Op.lt]: new Date()}
+            }
+        });
+
+        res.status(200).json({
+            "message": "Email успешно подтвержден",
+            "errCode": 0,
+            "date": {
+                userId: verificationToken.User.id,
+                email: verificationToken.User.email,
+                name: verificationToken.User.name,
+                isEmailVerified: true
+            }
+        });
+
+    } catch (error) {
+        console.error('Ошибка при подтверждении email:', error);
+        res.status(500).json({
+            "message": "Ошибка сервера при подтверждении email",
+            "errCode": 1
+        });
+    }
+}
+
+module.exports.verifyEmailResend = (req, res) => {
+    const data = [];
+    res.status(200).json({ "message": "Повторная отправка письма подтверждения email", "errCode": 0, "data": data })
+}
+
 module.exports.recoveryRequest = (req, res) => {
     const data = [];
     res.status(200).json({ "message": "Запрос восстановления пароля", "errCode": 0, "data": data })
@@ -264,14 +366,4 @@ module.exports.recoveryRequest = (req, res) => {
 module.exports.recoveryReset = (req, res) => {
     const data = [];
     res.status(200).json({ "message": "Сброс пароля по токену", "errCode": 0, "data": data })
-}
-
-module.exports.verifyEmail = (req, res) => {
-    const data = [];
-    res.status(200).json({ "message": "Подтверждение email по токену", "errCode": 0, "data": data })
-}
-
-module.exports.verifyEmailResend = (req, res) => {
-    const data = [];
-    res.status(200).json({ "message": "Повторная отправка письма подтверждения email", "errCode": 0, "data": data })
 }
