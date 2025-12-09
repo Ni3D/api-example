@@ -136,19 +136,14 @@ module.exports.signinUser = async (req, res) => {
             });
         }
 
-        // Удаление просроченных токенов
+        // Удаление просроченных и отозванных токенов
         await RefreshToken.destroy({
             where: {
                 userId: user.id,
-                expiresAt: { [Op.lt]: new Date() }
-            }
-        });
-
-        // Удаление отозванных токенов
-        await RefreshToken.destroy({
-            where: {
-                userId: user.id,
-                isRevoked: true
+                [Op.or]: [
+                    { expiresAt: { [Op.lt]: new Date() } },
+                    { isRevoked: true }
+                ]
             }
         });
 
@@ -258,11 +253,12 @@ module.exports.signoutUser = async (req, res) => {
         // Отзываем токен
         await tokenCheck.update({ isRevoked: true });
 
-        // Удаляем отозванные токены
+        // Удаляем просроченные токены
         await RefreshToken.destroy({
             where: {
                 userId: tokenCheck.userId,
-                isRevoked: true
+                isRevoked: true,
+                expiresAt: { [Op.lt]: new Date() }
             }
         });
 
@@ -333,15 +329,17 @@ module.exports.verifyEmail = async (req, res) => {
             }
         });
 
+        const data = {
+            userId: verificationToken.User.id,
+            email: verificationToken.User.email,
+            name: verificationToken.User.name,
+            isEmailVerified: true
+        };
+
         res.status(200).json({
             "message": "Email успешно подтвержден",
             "errCode": 0,
-            "date": {
-                userId: verificationToken.User.id,
-                email: verificationToken.User.email,
-                name: verificationToken.User.name,
-                isEmailVerified: true
-            }
+            "data": data
         });
 
     } catch (error) {
