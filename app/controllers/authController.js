@@ -5,6 +5,16 @@ const { User, RefreshToken, EmailVerificationToken, PasswordResetToken } = requi
 const JWTService   = require('../services/jwt');
 const EmailService = require('../services/emailService');
 
+const ERROR_CODES = {
+    BEAR: 1001,     // Ошибка валидации (обязательные поля)
+    LION: 2001,     // Неверные учетные данные
+    WOLF: 2002,     // Несанкционированный доступ
+    SHARK: 3001,    // Пользователь заблокирован
+    ELEPHANT: 4001, // Ресурс не найден
+    RHINO: 4002,    // Конфликт (дубликат)
+    WHALE: 5001,    // Серверная ошибка
+}
+
 // Регистрация пользователя
 module.exports.signupUser = async (req, res) => {
     try {
@@ -15,7 +25,7 @@ module.exports.signupUser = async (req, res) => {
         if (!email || !password || !name) {
             return res.status(400).json({
                 "message": "Email, пароль и имя обязательны",
-                "errCode": 1,
+                "errCode": ERROR_CODES.BEAR
             });
         }
 
@@ -25,7 +35,7 @@ module.exports.signupUser = async (req, res) => {
         if (emailCheck) {
             return res.status(409).json({
                 "message": "Пользователь с данным email уже зарегистрирован",
-                "errCode": 1,
+                "errCode": ERROR_CODES.RHINO
             });
         }
         
@@ -90,7 +100,7 @@ module.exports.signupUser = async (req, res) => {
         console.error('Ошибка при регистрации:', error);
         res.status(500).json({
             "message": "Ошибка сервера при регистрации",
-            "errCode": 1,
+            "errCode": ERROR_CODES.WHALE
         });
     }
 }
@@ -105,7 +115,7 @@ module.exports.signinUser = async (req, res) => {
         if (!email || !password) {
             return res.status(400).json({
                 "message": "Email и пароль обязательны",
-                "errCode": 1,
+                "errCode": ERROR_CODES.BEAR
             });
         }
 
@@ -115,7 +125,7 @@ module.exports.signinUser = async (req, res) => {
         if (!user) {
             return res.status(401).json({
                 "message": "Неверный email или пароль",
-                "errCode": 1,
+                "errCode": ERROR_CODES.LION
             });
         }
 
@@ -125,7 +135,7 @@ module.exports.signinUser = async (req, res) => {
         if (!isPasswordValid) {
             return res.status(401).json({
                 "message": "Неверный email или пароль",
-                "errCode": 1,
+                "errCode": ERROR_CODES.LION
             });
         }
 
@@ -133,7 +143,7 @@ module.exports.signinUser = async (req, res) => {
         if (user.isBlocked) {
             return res.status(403).json({
                 "message": "Пользователь заблокирован",
-                "errCode": 1,
+                "errCode": ERROR_CODES.SHARK
             });
         }
 
@@ -217,7 +227,7 @@ module.exports.signinUser = async (req, res) => {
         console.error('Ошибка при входе:', error);
         res.status(500).json({
             "message": "Ошибка сервера при аутентификации",
-            "errCode": 1,
+            "errCode": ERROR_CODES.WHALE
         });
     }
 }
@@ -232,7 +242,7 @@ module.exports.signoutUser = async (req, res) => {
         if (!refreshToken) {
             return res.status(400).json({
                 "message": "Refresh токен обязателен для выхода",
-                "errCode": 1,
+                "errCode": ERROR_CODES.BEAR,
             });
         }
 
@@ -248,7 +258,7 @@ module.exports.signoutUser = async (req, res) => {
         if (!tokenCheck) {
             return res.status(404).json({
                 "message": "Токен не найден или уже отозван",
-                "errCode": 1,
+                "errCode": ERROR_CODES.ELEPHANT,
             });
         }
 
@@ -273,7 +283,7 @@ module.exports.signoutUser = async (req, res) => {
         console.error('Ошибка при выходе:', error);
         res.status(500).json({
             "message": "Ошибка сервера при выходе",
-            "errCode": 1,
+            "errCode": ERROR_CODES.WHALE
         });
     }
 }
@@ -288,7 +298,7 @@ module.exports.verifyEmail = async (req, res) => {
         if (!token) {
             return res.status(400).json({
                 "message": "Токен подтверждения обязателен",
-                "errCode": 1
+                "errCode": ERROR_CODES.BEAR
             });
         }
 
@@ -305,7 +315,7 @@ module.exports.verifyEmail = async (req, res) => {
         if (!verificationToken) {
             return res.status(400).json({
                 "message": "Недействительный или просроченный токен",
-                'errCode': 1
+                'errCode': ERROR_CODES.WOLF
             });
         }
 
@@ -351,7 +361,7 @@ module.exports.verifyEmail = async (req, res) => {
         console.error('Ошибка при подтверждении email:', error);
         res.status(500).json({
             "message": "Ошибка сервера при подтверждении email",
-            "errCode": 1
+            "errCode": ERROR_CODES.WHALE
         });
     }
 }
@@ -366,7 +376,7 @@ module.exports.verifyEmailResend = async (req, res) => {
         if (!email) {
             return res.status(400).json({
                 "message": "Необходимо указать Email.",
-                "errCode": 1
+                "errCode": ERROR_CODES.BEAR
             });
         }
 
@@ -383,9 +393,9 @@ module.exports.verifyEmailResend = async (req, res) => {
 
         // Проверяем, подтвержден ли уже email
         if (user.isEmailVerified) {
-            return res.status(400).json({
+            return res.status(200).json({
                 "message": "Email уже подтвержден",
-                "errCode": 1
+                "errCode": 0
             });
         }
 
@@ -431,7 +441,7 @@ module.exports.verifyEmailResend = async (req, res) => {
         console.error('Ошибка при повторной отправке письма:', error);
         res.status(500).json({
             "message": "Ошибка сервера при отправке письма",
-            "errCode": 1
+            "errCode": ERROR_CODES.WHALE
         });
 
     }
@@ -447,7 +457,7 @@ module.exports.recoveryRequest = async (req, res) => {
         if (!email) {
             return res.status(400).json({
                 "message": "Email обязателен для восстановления пароля",
-                "errCode": 1
+                "errCode": ERROR_CODES.BEAR
             });
         }
 
@@ -466,7 +476,7 @@ module.exports.recoveryRequest = async (req, res) => {
         if (user.isBlocked) {
             return res.status(403).json({
                 "message": "Пользователь заблокирован",
-                "errCode": 1
+                "errCode": ERROR_CODES.SHARK
             });
         }
 
@@ -511,7 +521,7 @@ module.exports.recoveryRequest = async (req, res) => {
         console.error('Ошибка при запросе восстановления пароля:', error);
         res.status(500).json({
             "message": "Ошибка сервера при запросе восстановления пароля",
-            "errCode": 1
+            "errCode": ERROR_CODES.WHALE
         });
     }
 }
@@ -526,7 +536,7 @@ module.exports.recoveryReset = async (req, res) => {
         if (!token || !newPassword) {
             return res.status(400).json({
                 "message": "Токен и новый пароль обязательны",
-                "errCode": 1
+                "errCode": ERROR_CODES.BEAR
             });
         }
 
@@ -543,7 +553,7 @@ module.exports.recoveryReset = async (req, res) => {
         if (!resetToken) {
             return res.status(400).json({
                 "message": "Недействительный токен",
-                "errCode": 1
+                "errCode": ERROR_CODES.WOLF
             });
         }
 
@@ -551,7 +561,7 @@ module.exports.recoveryReset = async (req, res) => {
         if (resetToken.User.isBlocked) {
             return res.status(403).json({
                 "message": "Пользователь заблокирован",
-                "errCode": 1
+                "errCode": ERROR_CODES.SHARK
             });
         }
 
@@ -597,7 +607,7 @@ module.exports.recoveryReset = async (req, res) => {
         console.error('Ошибка при сбросе пароля:', error);
         res.status(500).json({
             "message": "Ошибка сервера при сбросе пароля",
-            "errCode": 1
+            "errCode": ERROR_CODES.WHALE
         });
     }
 }
