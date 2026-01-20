@@ -6,24 +6,18 @@ const refreshSecret = process.env.JWT_REFRESH_SECRET;
 
 class JWTService {
     // Генерация access токена
-    static generateAccessToken(user) {
+    static generateAccessToken(userId) {
         return jwt.sign(
-            {
-                userId: user.id,
-                email: user.email,
-                role: user.role
-            },
+            { userId },
             accessSecret,
             { expiresIn: process.env.JWT_ACCESS_EXPIRES || '15m' }
         );
     }
 
     // Генерация refresh токена
-    static generateRefreshToken(user) {
+    static generateRefreshToken(userId) {
         return jwt.sign(
-            {
-                userId: user.id
-            },
+            { userId },
             refreshSecret,
             { expiresIn: process.env.JWT_REFRESH_EXPIRES || '7d' }
         );
@@ -34,6 +28,7 @@ class JWTService {
         try {
             return jwt.verify(token, accessSecret);
         } catch (error) {
+            console.error('Ошибка при верификации access токена');
             return null;
         }
     }
@@ -43,8 +38,19 @@ class JWTService {
         try {
             return jwt.verify(token, refreshSecret);
         } catch (error) {
+            console.error('Ошибка при верификации refresh токена');
             return null;
         }
+    }
+
+    // Извлечение токена из заголовка
+    static extractTokenFromHeader(authHeader) {
+        if (!authHeader || typeof authHeader !== 'string') return null;
+
+        const parts = authHeader.trim().split(' ');
+        if (parts.length !== 2 || parts[0] !== 'Bearer') return null;
+
+        return parts[1];
     }
 }
 

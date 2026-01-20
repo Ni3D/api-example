@@ -187,8 +187,8 @@ module.exports.signinUser = async (req, res) => {
         }
 
         // Генерация токенов
-        const accessToken  = JWTService.generateAccessToken(user);
-        const refreshToken = JWTService.generateRefreshToken(user);
+        const accessToken  = JWTService.generateAccessToken(user.id);
+        const refreshToken = JWTService.generateRefreshToken(user.id);
 
         // Сохранение refresh токена в базу данных
         await RefreshToken.create({
@@ -340,7 +340,7 @@ module.exports.verifyEmail = async (req, res) => {
             where: {
                 userId: verificationToken.User.id,
                 usedAt: null,
-                expiresAt: { [Op.lt]: new Date()}
+                expiresAt: { [Op.lt]: new Date() }
             }
         });
 
@@ -579,7 +579,8 @@ module.exports.recoveryReset = async (req, res) => {
 
         // Удаляем все refresh токены пользователя
         await RefreshToken.destroy({
-            where: { userId: resetToken.User.id } });
+            where: { userId: resetToken.User.id }
+        });
 
         // Удаляем все активные токены восстановления пользователя
         await PasswordResetToken.destroy({

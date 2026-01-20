@@ -1,6 +1,10 @@
-const express      = require('express');
-const meRouter    = express.Router();
-const meController = require('../controllers/meController');
+const express        = require('express');
+const meRouter       = express.Router();
+const meController   = require('../controllers/meController');
+const authMiddleware = require('../middleware/authMiddleware');
+
+// Применяем authMiddleware ко всем маршрутам me
+meRouter.use(authMiddleware);
 
 // Маршруты ME
 meRouter.get('/',                meController.getProfile)

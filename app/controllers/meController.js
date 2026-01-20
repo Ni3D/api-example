@@ -1,6 +1,34 @@
-module.exports.getProfile = (req, res) => {
-    const data = [];
-    res.status(200).json({ "message": "Данные пользователя получены", "errCode": 0, "data": data })
+const { User } = require('../models');
+
+module.exports.getProfile = async (req, res) => {
+    try {
+
+        const data = {
+            id: req.user.id,
+            name: req.user.name,
+            email: req.user.email,
+            role: req.user.role,
+            avatarUrl: req.user.avatarUrl,
+            isEmailVerified: Boolean(req.user.isEmailVerified),
+            isBlocked: Boolean(req.user.isBlocked),
+            createdAt: req.user.createdAt,
+            updatedAt: req.user.updatedAt
+        }
+
+        res.status(200).json({
+            "message": "Данные пользователя получены.",
+            "errCode": 0,
+            "data": data
+        });
+
+    } catch (error) {
+        console.error('Ошибка при получении данных пользователя:', error);
+        res.status(500).json({
+            "message": "Ошибка сервера при получении данных пользователя",
+            "errCode": 1
+        });
+    }
+
 }
 
 module.exports.updateProfile = (req, res) => {
