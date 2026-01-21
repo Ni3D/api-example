@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const { Op } = require('sequelize');
 const { User, EmailVerificationToken } = require('../models');
 const EmailService = require('../services/emailService');
+const { error } = require('console');
 
 const ERROR_CODES = {
     BEAR: 1001,     // Ошибка валидации
@@ -235,9 +236,84 @@ module.exports.updateProfile = async (req, res) => {
     }
 }
 
-module.exports.deleteProfile = (req, res) => {
-    const data = [];
-    res.status(200).json({ "message": "Данные пользователя удалены", "errCode": 0, "data": data })
+module.exports.deleteProfile = async (req, res) => {
+    try {
+        // Получаем пароль из тела запроса
+        const { password } = req.body;
+
+        // Проверяем наличие пароля
+        if (!password) {
+            return res.status(400).json({
+                "message": "Для удаления профиля необходимо указать пароль",
+                "errCode": ERROR_CODES.BEAR
+            });
+        }
+
+        // Ищем пользователя в БД
+        const user = await User.findByPk(req.user.id);
+
+        if (!user) {
+            return res.status(404).json({
+                "message": "Пользователь не найден",
+                "errCode": ERROR_CODES.ELEPHANT
+            });
+        }
+
+        // Проверяем, не заблокирован ли пользователь
+        if (user.isBlocked) {
+            return res.status(403).json({
+                "message": "Пользователь заблокирован",
+                "errCode": ERROR_CODES.SHARK
+            });
+        }
+
+        // Проверяем пароль
+        const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
+        if (!isPasswordValid) {
+            return res.status(401).json({
+                "message": "Неверный пароль",
+                "errCode": ERROR_CODES.LION
+            });
+        }
+
+        // Сохраняем данные пользователя для email уведомления
+        const userId = user.id
+        const userName = user.name;
+        const userEmail = user.email;
+
+        // Удаляем все данные пользователя
+        await user.destroy();
+
+        // Формируем ответ
+        const data = {
+            userId: userId,
+            userName: userName,
+            email: userEmail,
+            deletedAt: new Date()
+        };
+
+        res.status(200).json({
+            "message": "Аккаунт успешно удален",
+            "errCode": 0,
+            "data": data
+        });
+        
+        // Отправляем email уведомление об удалении
+        EmailService.sendAccountDeletionEmail(userEmail, userName)
+            .then(result => {
+                console.log('Уведомление об удалении аккаунта отправлено:', result);
+            })
+            .catch(error => {
+                console.error('Ошибка при отправке уведомления:', error);
+            });
+
+    } catch (error) {
+        console.error('Ошибка при удалении профиля:', error);
+        res.status(500).json({
+            "message": "Ошибка сервера при удалении профиля",
+            "errCode": ERROR_CODES.WHALE
+        });
+    }
 }
 
 module.exports.uploadAvatar = (req, res) => {

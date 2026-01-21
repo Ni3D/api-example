@@ -82,6 +82,7 @@ class EmailService {
                 messageId: info.messageId,
                 previewUrl: nodemailer.getTestMessageUrl(info)
             };
+
         } catch (error) {
             console.error('Ошибка отправки email для сброса пароля', error);
             throw error;
@@ -98,8 +99,15 @@ class EmailService {
                 <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
                     <h2 style="color: #333;">Изменение пароля</h2>
                     <p>Здравствуйте, <strong>${name}</strong>!</p>
-                    <p>Пароль от Вашей учетной записи был изменен.</p>
-                    <p style="color: #ff5722; font-weight: bold;">Если это не Вы, сбросьте пароль через систему восстановелния пароля или обратитесь к администратору!</p>
+                    <p></p>
+                    <div style="background-color: #f8f9fa; padding: 15px; border-left: 4px solid #dc3545; margin: 20px 0;">
+                        <p style="color: #721c24; margin: 0;">Пароль от Вашей учетной записи был изменен.</p>
+                    </div>
+                    <p style="color: #ff5722; font-weight: bold;">Если это делали не Вы, сбросьте пароль через систему восстановления пароля или обратитесь к администратору!</p>
+                    <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
+                    <p style="font-size: 12px; color: #777;">
+                        Это автоматическое уведомление, пожалуйста, не отвечайте на него.
+                    </p>
                 </div>
                 `
             };
@@ -111,12 +119,48 @@ class EmailService {
                 messageId: info.messageId,
                 previewUrl: nodemailer.getTestMessageUrl(info)
             };
+
         } catch (error) {
-            console.error('Ошибка отправки email для сброса пароля', error);
+            console.error('Ошибка отправки email об изменении пароля', error);
             throw error;
         }
     }
 
+    async sendAccountDeletionEmail(email, name) {
+        try {
+            const mailOptions = {
+                from: mailFrom,
+                to: email,
+                subject: 'Удаление аккаунта',
+                html: `
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                    <h2 style="color: #333;">Удаление аккаунта</h2>
+                    <p>Здравствуйте, <strong>${name}</strong>!</p>
+                    <p></p>
+                    <div style="background-color: #f8f9fa; padding: 15px; border-left: 4px solid #dc3545; margin: 20px 0;">
+                        <p style="color: #721c24; margin: 0;">Ваш аккаунт был успешно удален.</p>
+                    </div>
+                    <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
+                    <p style="font-size: 12px; color: #777;">
+                        Это автоматическое уведомление, пожалуйста, не отвечайте на него.
+                    </p>
+                </div>
+                `
+            };
+
+            const info = await this.transporter.sendMail(mailOptions);
+
+            return {
+                success: true,
+                messageId: info.messageId,
+                previewUrl: nodemailer.getTestMessageUrl(info)
+            };
+
+        } catch (error) {
+            console.error('Ошибка отправки email об удалении аккаунта', error);
+            throw error;
+        }
+    }
 }
 
 module.exports = new EmailService();
