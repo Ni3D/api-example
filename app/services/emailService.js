@@ -87,6 +87,36 @@ class EmailService {
             throw error;
         }
     }
+
+    async sendPasswordChangeEmail(email, name) {
+        try {
+            const mailOptions = {
+                from: mailFrom,
+                to: email,
+                subject: 'Изменение пароля',
+                html: `
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                    <h2 style="color: #333;">Изменение пароля</h2>
+                    <p>Здравствуйте, <strong>${name}</strong>!</p>
+                    <p>Пароль от Вашей учетной записи был изменен.</p>
+                    <p style="color: #ff5722; font-weight: bold;">Если это не Вы, сбросьте пароль через систему восстановелния пароля или обратитесь к администратору!</p>
+                </div>
+                `
+            };
+
+            const info = await this.transporter.sendMail(mailOptions);
+
+            return {
+                success: true,
+                messageId: info.messageId,
+                previewUrl: nodemailer.getTestMessageUrl(info)
+            };
+        } catch (error) {
+            console.error('Ошибка отправки email для сброса пароля', error);
+            throw error;
+        }
+    }
+
 }
 
 module.exports = new EmailService();

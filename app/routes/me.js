@@ -3,6 +3,9 @@ const meRouter       = express.Router();
 const meController   = require('../controllers/meController');
 const authMiddleware = require('../middleware/authMiddleware');
 
+// Применяем middleware для парсинга JSON
+meRouter.use(express.json());
+
 // Применяем authMiddleware ко всем маршрутам me
 meRouter.use(authMiddleware);
 
