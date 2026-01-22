@@ -1,7 +1,8 @@
-const express        = require('express');
-const meRouter       = express.Router();
-const meController   = require('../controllers/meController');
-const authMiddleware = require('../middleware/authMiddleware');
+const express          = require('express');
+const meRouter         = express.Router();
+const meController     = require('../controllers/meController');
+const authMiddleware   = require('../middleware/authMiddleware');
+const uploadMiddleware = require('../middleware/uploadMiddleware');
 
 // Применяем middleware для парсинга JSON
 meRouter.use(express.json());
@@ -13,7 +14,7 @@ meRouter.use(authMiddleware);
 meRouter.get('/',                meController.getProfile)
 meRouter.patch('/',              meController.updateProfile)
 meRouter.delete('/',             meController.deleteProfile)
-meRouter.post('/upload',         meController.uploadAvatar)
+meRouter.post('/upload',         uploadMiddleware.uploadAvatar, meController.uploadAvatar)
 meRouter.delete('/upload',       meController.deleteAvatar)
 meRouter.post('/task',           meController.createTask)
 meRouter.get('/task',            meController.getTask)

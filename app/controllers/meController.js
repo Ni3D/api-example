@@ -1,5 +1,7 @@
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
+const path   = require('path');
+const fs     = require('fs').promises;
 const { Op } = require('sequelize');
 const { User, EmailVerificationToken } = require('../models');
 const EmailService = require('../services/emailService');
@@ -14,6 +16,9 @@ const ERROR_CODES = {
     RHINO: 4002,    // Конфликт (дубликат)
     WHALE: 5001,    // Серверная ошибка
 };
+
+// Путь к папке с аватарами
+const AVATARS_DIR = path.join(__dirname, '../../uploads/avatars');
 
 module.exports.getProfile = async (req, res) => {
     try {
@@ -297,7 +302,7 @@ module.exports.deleteProfile = async (req, res) => {
             "errCode": 0,
             "data": data
         });
-        
+
         // Отправляем email уведомление об удалении
         EmailService.sendAccountDeletionEmail(userEmail, userName)
             .then(result => {
@@ -316,14 +321,196 @@ module.exports.deleteProfile = async (req, res) => {
     }
 }
 
-module.exports.uploadAvatar = (req, res) => {
-    const data = [];
-    res.status(200).json({ "message": "Аватар пользователя загружен", "errCode": 0, "data": data })
+module.exports.uploadAvatar = async (req, res) => {
+    try {
+        // Проверяем, загружен ли файл
+        if (!req.file) {
+            return res.status(400).json({
+                "message": "Файл не загружен. Пожалуйста, выберите файл для загрузки.",
+                "errCode": ERROR_CODES.BEAR
+            });
+        }
+
+        // Ищем пользователя в БД
+        const user = await User.findByPk(req.user.id);
+
+        if (!user) {
+            // Удаляем загруженный файл, если пользователь не найден
+            try {
+                await fs.unlink(req.file.path);
+            } catch (unlinkError) {
+                console.error('Ошибка при удалени загруженного файла:', unlinkError);
+            }
+
+            return res.status(404).json({
+                "message": "Пользователь не найден",
+                "errCode": ERROR_CODES.ELEPHANT
+            });
+        }
+
+        // Проверяем, не заблокирован ли пользователь
+        if (user.isBlocked) {
+            try {
+                await fs.unlink(req.file.path);
+            } catch (unlinkError) {
+                console.error('Ошибка при удалени загруженного файла:', unlinkError);
+            }
+
+            return res.status(403).json({
+                "message": "Пользователь заблокирован",
+                "errCode": ERROR_CODES.SHARK
+            });
+        }
+
+        // Удаляем старый аватар, если он существует
+        if (user.avatarUrl) {
+            try {
+                // Извлекаем имя файла из URL
+                const oldFilename = path.basename(user.avatarUrl);
+                const oldFilePath = path.join(AVATARS_DIR, oldFilename);
+
+                await fs.unlink(oldFilePath);
+            } catch (unlinkError) {
+                if (unlinkError.code !== 'ENOENT') {
+                    console.error('Ошибка  при удалении  старого аватара:', unlinkError);
+                }
+            }
+        }
+
+        // Форимруем URL для нового аватара
+        const avatarUrl = `/uploads/avatars/${req.file.filename}`;
+
+        // Обновляем аватар в БД
+        await user.update({ avatarUrl });
+
+        // Получаем обновленные данные пользователя
+        const updatedUser = await User.findByPk(user.id, {
+            attributes: { exclude: ['passwordHash'] }
+        });
+
+        // Формируем ответ
+        const data = {
+            id: updatedUser.id,
+            name: updatedUser.name,
+            email: updatedUser.email,
+            role: updatedUser.role,
+            avatarUrl: updatedUser.avatarUrl,
+            isEmailVerified: Boolean(updatedUser.isEmailVerified),
+            isBlocked: Boolean(updatedUser.isBlocked),
+            createdAt: updatedUser.createdAt,
+            updatedAt: updatedUser.updatedAt
+        };
+
+        res.status(200).json({
+            "message": "Аватар успешно загружен",
+            "errCode": 0,
+            "data": data
+        });
+
+    } catch (error) {
+        // Удаляем загруженный файл при ошибке
+        if (req.file) {
+            try {
+                await fs.unlink(req.file.path);
+            } catch (unlinkError) {
+                console.error('Ошибка при удалении загруженного файла после ошибки:', unlinkError);
+            }
+        }
+
+        console.error('Ошибка при загрузке аватара:', error);
+        
+        // Обработка ошибок multer
+        if (error.code === 'LIMIT_FILE_SIZE') {
+            return res.status(400).json({
+                "message": "Файл слишком большой. Максимальный размер: 5MB",
+                "errCode": ERROR_CODES.BEAR
+            });
+        }
+
+        res.status(500).json({
+            "message": "Ошибка сервера при загрузке аватара",
+            "errCode": ERROR_CODES.WHALE
+        });
+    }
 }
 
-module.exports.deleteAvatar = (req, res) => {
-    const data = [];
-    res.status(200).json({ "message": "Аватар пользователя удален", "errCode": 0, "data": data })
+module.exports.deleteAvatar = async (req, res) => {
+    try {
+        // Ищем пользователя в БД
+        const user = await User.findByPk(req.user.id);
+
+        if (!user) {
+            return res.status(404).json({
+                "message": "Пользователь не найден",
+                "errCode": ERROR_CODES.ELEPHANT
+            });
+        }
+
+        // Проверяем, не заблокирован ли пользователь
+        if (user.isBlocked) {
+            return res.status(403).json({
+                "message": "Пользователь заблокирован",
+                "errCode": ERROR_CODES.SHARK
+            });
+        }
+
+        // Проверяем, есть ли у пользователя аватар
+        if (!user.avatarUrl) {
+            return res.status(404).json({
+                "message": "Аватар не найден",
+                "errCode": ERROR_CODES.ELEPHANT
+            });
+        }
+
+        // Извлекаем имя файла из URL
+        const filename = path.basename(user.avatarUrl);
+        const filePath = path.join(AVATARS_DIR, filename);
+
+        try {
+            // Удаляем файл аватара
+            await fs.unlink(filePath);
+            console.log('Аватар удален:', filePath);
+        } catch (unlinkError) {
+            // Если файл не найден, продолжаем выполнение
+            if (unlinkError.code !== 'ENOENT') {
+                console.error('Ошибка при удалении файла аватара:', unlinkError);
+            }
+        }
+
+        // Обновляем запись пользователя (удаляем ссылку на аватар)
+        await user.update({ avatarUrl: null });
+
+        // Получаем обновленные данные пользователя
+        const updatedUser = await User.findByPk(user.id, {
+            attributes: { exclude: ['passwordHash'] }
+        });
+
+        // Формируем ответ
+        const data = {
+            id: updatedUser.id,
+            name: updatedUser.name,
+            email: updatedUser.email,
+            role: updatedUser.role,
+            avatarUrl: updatedUser.avatarUrl,
+            isEmailVerified: Boolean(updatedUser.isEmailVerified),
+            isBlocked: Boolean(updatedUser.isBlocked),
+            createdAt: updatedUser.createdAt,
+            updatedAt: updatedUser.updatedAt
+        };
+
+        res.status(200).json({
+            "message": "Аватар успешно удален",
+            "errCode": 0,
+            "data": data
+        });
+
+    } catch (error) {
+        console.error('Ошибка при удалении аватара:', error);
+        res.status(500).json({
+            "message": "Ошибка сервера при удалении аватара",
+            "errCode": ERROR_CODES.WHALE
+        });
+    }
 }
 
 module.exports.createTask = (req, res) => {
