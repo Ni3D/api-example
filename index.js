@@ -25,5 +25,4 @@ router(app);
 
 app.listen(port, host, () => {
     console.log(`Сервер запущен на порту ${port}`);
-    console.log(`Статические файлы доступны по пути: /uploads/avatars/`);
 });

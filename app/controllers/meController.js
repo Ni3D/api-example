@@ -3,9 +3,9 @@ const crypto = require('crypto');
 const path   = require('path');
 const fs     = require('fs').promises;
 const { Op } = require('sequelize');
-const { User, EmailVerificationToken } = require('../models');
+const { User, EmailVerificationToken, Task } = require('../models');
 const EmailService = require('../services/emailService');
-const { error } = require('console');
+const task = require('../models/task');
 
 const ERROR_CODES = {
     BEAR: 1001,     // Ошибка валидации
@@ -418,7 +418,7 @@ module.exports.uploadAvatar = async (req, res) => {
         }
 
         console.error('Ошибка при загрузке аватара:', error);
-        
+
         // Обработка ошибок multer
         if (error.code === 'LIMIT_FILE_SIZE') {
             return res.status(400).json({
@@ -469,7 +469,6 @@ module.exports.deleteAvatar = async (req, res) => {
         try {
             // Удаляем файл аватара
             await fs.unlink(filePath);
-            console.log('Аватар удален:', filePath);
         } catch (unlinkError) {
             // Если файл не найден, продолжаем выполнение
             if (unlinkError.code !== 'ENOENT') {
@@ -513,9 +512,129 @@ module.exports.deleteAvatar = async (req, res) => {
     }
 }
 
-module.exports.createTask = (req, res) => {
-    const data = [];
-    res.status(200).json({ "message": "Новая задача создана", "errCode": 0, "data": data })
+module.exports.createTask = async (req, res) => {
+    try {
+        // Получаем данные из тела запроса
+        const { title, description, status, deadline, assigneeId } = req.body;
+        
+        // ID текущего пользователя из middleware
+        const userId = req.user.id;
+
+        // Проверяем обязательные поля
+        if (!title) {
+            return res.status(400).json({
+                "message": "Название задачи обязательно",
+                "errCode": ERROR_CODES.BEAR
+            });
+        }
+
+        // Проверяем существование пользователя, которому назначается задача (если указан assigneeId)
+        if (assigneeId) {
+            const assignee = await User.findByPk(assigneeId);
+            if (!assignee) {
+                return res.status(404).json({
+                    "message": "Пользователь для назначения задачи не найден",
+                    "errCode": ERROR_CODES.ELEPHANT
+                });
+            }
+            
+            // Проверяем, не заблокирован ли пользователь
+            if (assignee.isBlocked) {
+                return res.status(403).json({
+                    "message": "Пользователь, которому назначается задача, заблокирован",
+                    "errCode": ERROR_CODES.SHARK
+                });
+            }
+        }
+
+        // Проверяем корректность статуса (если передан)
+        const validStatuses = ['NEW', 'IN_PROGRESS', 'DONE', 'ARCHIVED'];
+        if (status && !validStatuses.includes(status)) {
+            return res.status(400).json({
+                "message": `Неверный статус задачи. Допустимые значения: ${validStatuses.join(', ')}`,
+                "errCode": ERROR_CODES.BEAR
+            });
+        }
+
+        // Проверяем дату дедлайна (если передана)
+        if (deadline) {
+            const deadlineDate = new Date(deadline);
+            if (isNaN(deadlineDate.getTime())) {
+                return res.status(400).json({
+                    "message": "Неверный формат даты дедлайна",
+                    "errCode": ERROR_CODES.BEAR
+                });
+            }
+            
+            // Проверяем, что дедлайн не в прошлом
+            if (deadlineDate < new Date()) {
+                return res.status(400).json({
+                    "message": "Дедлайн не может быть в прошлом",
+                    "errCode": ERROR_CODES.BEAR
+                });
+            }
+        }
+
+        // Создаем задачу
+        const task = await Task.create({
+            title,
+            description: description || null,
+            status: status || 'NEW',
+            deadline: deadline || null,
+            assigneeId: assigneeId || null,
+            createdById: userId
+        });
+
+        // Загружаем связанные данные для ответа
+        const createdTask = await Task.findByPk(task.id, {
+            include: [
+                {
+                    model: User,
+                    as: 'Assignee',
+                    attributes: ['id', 'name', 'email']
+                },
+                {
+                    model: User,
+                    as: 'Creator',
+                    attributes: ['id', 'name', 'email']
+                }
+            ]
+        });
+
+        // Форматируем ответ
+        const data = {
+            id: createdTask.id,
+            title: createdTask.title,
+            description: createdTask.description,
+            status: createdTask.status,
+            deadline: createdTask.deadline,
+            assignee: createdTask.Assignee ? {
+                id: createdTask.Assignee.id,
+                name: createdTask.Assignee.name,
+                email: createdTask.Assignee.email
+            } : null,
+            creator: {
+                id: createdTask.Creator.id,
+                name: createdTask.Creator.name,
+                email: createdTask.Creator.email
+            },
+            createdAt: createdTask.createdAt,
+            updatedAt: createdTask.updatedAt
+        };
+
+        res.status(201).json({
+            "message": "Новая задача создана",
+            "errCode": 0,
+            "data": data
+        });
+
+    } catch (error) {
+        console.error('Ошибка при создании задачи:', error);
+        res.status(500).json({
+            "message": "Ошибка сервера при создании задачи",
+            "errCode": ERROR_CODES.WHALE
+        });
+    }
 }
 
 module.exports.getTask = (req, res) => {
