@@ -5,7 +5,6 @@ const fs     = require('fs').promises;
 const { Op } = require('sequelize');
 const { User, EmailVerificationToken, Task } = require('../models');
 const EmailService = require('../services/emailService');
-const task = require('../models/task');
 
 const ERROR_CODES = {
     BEAR: 1001,     // Ошибка валидации
@@ -601,7 +600,7 @@ module.exports.createTask = async (req, res) => {
             ]
         });
 
-        // Форматируем ответ
+        // Формируем ответ
         const data = {
             id: createdTask.id,
             title: createdTask.title,
@@ -637,9 +636,92 @@ module.exports.createTask = async (req, res) => {
     }
 }
 
-module.exports.getTask = (req, res) => {
-    const data = [];
-    res.status(200).json({ "message": "Список задач получен", "errCode": 0, "data": data })
+module.exports.getTask = async (req, res) => {
+    try {
+        const userId = req.user.id;
+
+        // Получаем задачи пользователя
+        const tasks = await Task.findAll({
+            where: {
+                [Op.or]: [
+                    { assigneeId: userId },
+                    { createdById: userId }
+                ],
+                deletedAt: null
+            },
+            include: [
+                {
+                    model: User,
+                    as: 'Assignee',
+                    attributes: ['id', 'name', 'email']
+                },
+                {
+                    model: User,
+                    as: 'Creator',
+                    attributes: ['id', 'name', 'email']
+                }
+            ],
+            order: [['createdAt', 'DESC']]
+        });
+
+        // Разделяем задачи на группы
+        const assignedTasks = [];  // Задачи, где пользователь исполнитель
+        const createdTasks = [];   // Задачи, где пользователь создатель
+        const otherTasks = [];     // Задачи, где пользователь и то и другое
+
+        tasks.forEach(task => {
+            const isAssignee = task.assigneeId === userId;
+            const isCreator = task.createdById === userId;
+
+            const taskData = {
+                id: task.id,
+                title: task.title,
+                description: task.description,
+                status: task.status,
+                deadline: task.deadline,
+                assignee: task.Assignee ? {
+                    id: task.Assignee.id,
+                    name: task.Assignee.name,
+                    email: task.Assignee.email
+                }: null,
+                creator: task.Creator ? {
+                    id: task.Creator.id,
+                    name: task.Creator.name,
+                    email: task.Creator.email
+                }: null,
+                createdAt: task.createdAt,
+                updatedAt: task.updatedAt
+            };
+
+            if (isAssignee && isCreator) {
+                otherTasks.push(taskData);
+            } else if (isAssignee) {
+                assignedTasks.push(taskData);
+            } else if (isCreator) {
+                createdTasks.push(taskData);
+            }
+        });
+
+        // Формируем ответ
+        const data = {
+            assignedTasks: assignedTasks,
+            createdTasks: createdTasks,
+            otherTasks: otherTasks,
+        };
+
+        res.status(200).json({
+            "message": "Список задач получен",
+            "errCode": 0,
+            "data": data
+        });
+
+    } catch (error) {
+        console.error('Ошибка при получении списка задач:', error);
+        res.status(500).json({
+            "message": "Ошибка сервера при получении списка задач",
+            "errCode": ERROR_CODES.WHALE
+        });
+    }
 }
 
 module.exports.getTaskById = (req, res) => {
