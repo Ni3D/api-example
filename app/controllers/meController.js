@@ -338,7 +338,7 @@ module.exports.uploadAvatar = async (req, res) => {
             try {
                 await fs.unlink(req.file.path);
             } catch (unlinkError) {
-                console.error('Ошибка при удалени загруженного файла:', unlinkError);
+                console.error('Ошибка при удалении загруженного файла:', unlinkError);
             }
 
             return res.status(404).json({
@@ -352,7 +352,7 @@ module.exports.uploadAvatar = async (req, res) => {
             try {
                 await fs.unlink(req.file.path);
             } catch (unlinkError) {
-                console.error('Ошибка при удалени загруженного файла:', unlinkError);
+                console.error('Ошибка при удалении загруженного файла:', unlinkError);
             }
 
             return res.status(403).json({
@@ -772,7 +772,7 @@ module.exports.getTaskById = async (req, res) => {
 
         // Проверяем, удалена ли задача
         if (task.deletedAt) {
-            return res.status(404).json({
+            return res.status(410).json({
                 "message": `Задача с ID ${taskId} была удалена`,
                 "errCode": ERROR_CODES.ELEPHANT
             });
@@ -879,7 +879,7 @@ module.exports.updateTaskById = async (req, res) => {
 
         // Проверяем, удалена ли задача
         if (task.deletedAt) {
-            return res.status(404).json({
+            return res.status(410).json({
                 "message": `Задача с ID ${taskId} была удалена`,
                 "errCode": ERROR_CODES.ELEPHANT
             });
@@ -887,7 +887,7 @@ module.exports.updateTaskById = async (req, res) => {
 
         // Проверяем права доступа
         // Пользователь должен быть создателем задачи
-        if (task.createdById === userId) {
+        if (task.createdById !== userId) {
             return res.status(403).json({
                 "message": "У вас нет прав для редактирования этой задачи",
                 "errCode": ERROR_CODES.WOLF
@@ -899,7 +899,7 @@ module.exports.updateTaskById = async (req, res) => {
         let assigneeChanged = false;
 
         // Обновление названия
-        if (!title !== undefined) {
+        if (title !== undefined) {
             if (title.trim() === '') {
                 return res.status(400).json({
                     "message": "Название задачи не может быть пустым",
@@ -927,7 +927,7 @@ module.exports.updateTaskById = async (req, res) => {
         }
 
         // Обновление дедлайна
-        if (!deadline !== undefined) {
+        if (deadline !== undefined) {
             if (deadline === null || deadline === '') {
                 // Разрешаем очистить дедлайн
                 updates.deadline = null;
@@ -944,7 +944,7 @@ module.exports.updateTaskById = async (req, res) => {
         }
 
         // Обновление исполнителя
-        if (!assigneeId !== undefined) {
+        if (assigneeId !== undefined) {
             if (assigneeId === null || assigneeId === '') {
                 // Разрешаем удалить исполнителя
                 updates.assigneeId = null;
