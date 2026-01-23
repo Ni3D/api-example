@@ -1044,8 +1044,113 @@ module.exports.updateTaskById = async (req, res) => {
     }
 }
 
-module.exports.deleteTaskById = (req, res) => {
-    const data = [];
-    const taskId = req.params.taskId;
-    res.status(200).json({ "message": `Задача с номером ${taskId} удалена`, "errCode": 0, "data": data })
+module.exports.deleteTaskById = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const taskId = req.params.taskId;
+
+        // Проверяем, что taskId передан
+        if (!taskId) {
+            return res.status(400).json({
+                "message": "ID задачи обязателен",
+                "errCode": ERROR_CODES.BEAR
+            });
+        }
+
+        // Проверяем, что taskId является числом
+        const taskIdNum = parseInt(taskId);
+        if (isNaN(taskIdNum)) {
+            return res.status(400).json({
+                "message": "ID задачи дожен быть числом",
+                "errCode": ERROR_CODES.BEAR
+            });
+        }
+
+        // Ищем задачу в БД
+        const task = await Task.findByPk(taskIdNum, {
+            include: [
+                {
+                    model: User,
+                    as: 'Assignee',
+                    attributes: ['id', 'name', 'email']
+                },
+                {
+                    model: User,
+                    as: 'Creator',
+                    attributes: ['id', 'name', 'email']
+                }
+            ]
+        });
+
+        // Проверяем, найдена ли задача
+        if (!task) {
+            return res.status(404).json({
+                "message": `Задача с ID ${taskId} не найдена`,
+                "errCode": ERROR_CODES.ELEPHANT
+            });
+        }
+
+        // Проверяем, не удалена ли задача
+        if (task.deletedAt) {
+            return res.status(410).json({
+                "message": `Задача с ID ${taskId} уже удалена`,
+                "errCode": ERROR_CODES.ELEPHANT,
+            });
+        }
+
+        // Проверяем права доступа
+        // Пользователь должен быть создателем задачи
+        if (task.createdById !== userId) {
+            return res.status(403).json({
+                "message": "У вас нет прав для удаления этой задачи",
+                "errCode": ERROR_CODES.WOLF
+            });
+        }
+
+        // Получаем данные для ответа
+        const taskData = {
+            id: task.id,
+            title: task.title,
+            description: task.description,
+            status: task.status,
+            deadline: task.deadline,
+            assignee: task.Assignee ? {
+                id: task.Assignee.id,
+                name: task.Assignee.name,
+                email: task.Assignee.email
+            } : null,
+            creator: task.Creator ? {
+                id: task.Creator.id,
+                name: task.Creator.name,
+                email: task.Creator.email
+            } : null,
+            createdAt: task.createdAt,
+            updatedAt: task.updatedAt
+        };
+
+        // Выполняем soft delete задачи
+        await task.update({
+            deletedAt: new Date()
+        });
+
+        // Формируем ответ
+        const data = {
+            ...taskData,
+            deletedAt: new Date(),
+
+        }
+
+        res.status(200).json({
+            "message": `Задача с ID ${taskId} удалена`,
+            "errCode": 0,
+            "data": data
+        });
+
+    } catch (error) {
+        console.error('Ошибка при удалении задачи:', error);
+        res.status(500).json({
+            "message": "Ошибка сервера при удалении задачи",
+            "errCode": ERROR_CODES.WHALE
+        });
+    }
 }
