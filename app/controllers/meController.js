@@ -724,10 +724,115 @@ module.exports.getTask = async (req, res) => {
     }
 }
 
-module.exports.getTaskById = (req, res) => {
-    const data = [];
-    const taskId = req.params.taskId;
-    res.status(200).json({ "message": `Задача с номером ${taskId} получена`, "errCode": 0, "data": data })
+module.exports.getTaskById = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const taskId = req.params.taskId;
+
+        // Проверяем, что taskId передан
+        if (!taskId) {
+            return res.status(400).json({
+                "message": "ID задачи обязателен",
+                "errCode": ERROR_CODES.BEAR
+            });
+        }
+
+        // Преобразуем taskId в число
+        const taskIdNum = parseInt(taskId);
+        if (isNaN(taskIdNum)) {
+            return res.status(400).json({
+                "message": "ID задачи должен быть числом",
+                "errCode": ERROR_CODES.BEAR
+            });
+        }
+
+        // Ищем задачу в БД
+        const task = await Task.findByPk(taskIdNum, {
+            include: [
+                {
+                    model: User,
+                    as: 'Assignee',
+                    attributes: ['id', 'name', 'email']
+                },
+                {
+                    model: User,
+                    as: 'Creator',
+                    attributes: ['id', 'name', 'email']
+                }
+            ]
+        });
+
+        // Проверяем, найдена ли задача
+        if (!task) {
+            return res.status(404).json({
+                "message": `Задача с ID ${taskId} не найдена`,
+                "errCode": ERROR_CODES.ELEPHANT
+            });
+        }
+
+        // Проверяем, удалена ли задача
+        if (task.deletedAt) {
+            return res.status(404).json({
+                "message": `Задача с ID ${taskId} была удалена`,
+                "errCode": ERROR_CODES.ELEPHANT
+            });
+        }
+
+        // Проверяем права доступа
+        // Пользователь должен быть либо создателем либоо исполнителем
+        const isAssignee = task.assigneeId === userId;
+        const isCreator = task.createdById === userId;
+
+        if (!isAssignee && !isCreator) {
+            return res.status(403).json({
+                "message": "У вас нет прав для просмотра этой задачи",
+                "errCode": ERROR_CODES.WOLF
+            });
+        }
+
+        // Определяем роль пользовтеля в этой задаче
+        let userRole = [];
+        if (isAssignee) userRole.push('assignee');
+        if (isCreator) userRole.push('creator');
+
+        // Формируем ответ
+        const data = {
+            id: task.id,
+            title: task.title,
+            description: task.description,
+            status: task.status,
+            deadline: task.deadline,
+            assignee: task.Assignee ? {
+                id: task.Assignee.id,
+                name: task.Assignee.name,
+                email: task.Assignee.email,
+                avatarUrl: task.Assignee.avatarUrl
+            } : null,
+            creator: task.Creator ? {
+                id: task.Creator.id,
+                name: task.Creator.name,
+                email: task.Creator.email,
+                avatarUrl: task.Creator.avatarUrl
+            } : null,
+            userRole: userRole,
+            createdAt: task.createdAt,
+            updatedAt: task.updatedAt,
+            deletedAt: task.deletedAt
+        };
+
+        res.status(200).json({
+            "message": `Задача с номером ${taskId} получена`,
+            "errCode": 0,
+            "data": data
+        });
+
+    } catch (error) {
+        console.error('Ошибка при получении задачи по ID:', error);
+        res.status(500).json({
+            "message": "Ошибка сервера при получении задачи",
+            "errCode": ERROR_CODES.WHALE
+        });
+    }
 }
 
 module.exports.updateTaskById = (req, res) => {
