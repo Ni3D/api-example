@@ -145,7 +145,7 @@ module.exports.updateProfile = async (req, res) => {
                 createdAt: user.createdAt,
                 updatedAt: user.updatedAt
             };
-            
+
             return res.status(200).json({
                 "message": "Нет изменений для обновления",
                 "errCode": 0,
@@ -515,7 +515,7 @@ module.exports.createTask = async (req, res) => {
     try {
         // Получаем данные из тела запроса
         const { title, description, status, deadline, assigneeId } = req.body;
-        
+
         // ID текущего пользователя из middleware
         const userId = req.user.id;
 
@@ -536,7 +536,7 @@ module.exports.createTask = async (req, res) => {
                     "errCode": ERROR_CODES.ELEPHANT
                 });
             }
-            
+
             // Проверяем, не заблокирован ли пользователь
             if (assignee.isBlocked) {
                 return res.status(403).json({
@@ -564,7 +564,7 @@ module.exports.createTask = async (req, res) => {
                     "errCode": ERROR_CODES.BEAR
                 });
             }
-            
+
             // Проверяем, что дедлайн не в прошлом
             if (deadlineDate < new Date()) {
                 return res.status(400).json({
@@ -683,12 +683,12 @@ module.exports.getTask = async (req, res) => {
                     id: task.Assignee.id,
                     name: task.Assignee.name,
                     email: task.Assignee.email
-                }: null,
+                } : null,
                 creator: task.Creator ? {
                     id: task.Creator.id,
                     name: task.Creator.name,
                     email: task.Creator.email
-                }: null,
+                } : null,
                 createdAt: task.createdAt,
                 updatedAt: task.updatedAt
             };
@@ -835,10 +835,213 @@ module.exports.getTaskById = async (req, res) => {
     }
 }
 
-module.exports.updateTaskById = (req, res) => {
-    const data = [];
-    const taskId = req.params.taskId;
-    res.status(200).json({ "message": `Задача с номером ${taskId} обновлена`, "errCode": 0, "data": data })
+module.exports.updateTaskById = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const taskId = req.params.taskId;
+        const { title, description, status, deadline, assigneeId } = req.body;
+
+        // Проверяем, что taskId передан
+        if (!taskId) {
+            return res.status(400).json({
+                "message": "ID задачи обязателен",
+                "errCode": ERROR_CODES.BEAR
+            });
+        }
+
+        // Проверяем, что taskId является числом
+        const taskIdNum = parseInt(taskId);
+        if (isNaN(taskIdNum)) {
+            return res.status(400).json({
+                "message": "ID задачи должен быть числом",
+                "errCode": ERROR_CODES.BEAR
+            });
+        }
+
+        // Проверям, что есть хотя бы одно поле для обновления
+        if (!title && !description && !status && !deadline && !assigneeId) {
+            return res.status(400).json({
+                "message": "Необходимо указать хотя бы одно поле для редактироваия",
+                "errCode": ERROR_CODES.ELEPHANT
+            });
+        }
+
+        // Ищем задачу в БД
+        const task = await Task.findByPk(taskIdNum);
+
+        // Проверяем, найдена ли задача
+        if (!task) {
+            return res.status(404).json({
+                "message": `Задача с ID ${taskId} не найдена`,
+                "errCode": ERROR_CODES.ELEPHANT
+            });
+        }
+
+        // Проверяем, удалена ли задача
+        if (task.deletedAt) {
+            return res.status(404).json({
+                "message": `Задача с ID ${taskId} была удалена`,
+                "errCode": ERROR_CODES.ELEPHANT
+            });
+        }
+
+        // Проверяем права доступа
+        // Пользователь должен быть создателем задачи
+        if (task.createdById === userId) {
+            return res.status(403).json({
+                "message": "У вас нет прав для редактирования этой задачи",
+                "errCode": ERROR_CODES.WOLF
+            });
+        }
+
+        // Объект для хранения изменений
+        const updates = {};
+        let assigneeChanged = false;
+
+        // Обновление названия
+        if (!title !== undefined) {
+            if (title.trim() === '') {
+                return res.status(400).json({
+                    "message": "Название задачи не может быть пустым",
+                    "errCode": ERROR_CODES.BEAR
+                });
+            }
+            updates.title = title.trim();
+        }
+
+        // Обновление описания
+        if (description !== undefined) {
+            updates.description = description.trim() || null;
+        }
+
+        // Обновление статуса
+        if (status) {
+            const validStatuses = ['NEW', 'IN_PROGRESS', 'DONE', 'ARCHIVED'];
+            if (!validStatuses.includes(status)) {
+                return res.status(400).json({
+                    "message": `Неверный статус задачи. Допустимые значения ${validStatuses.join(', ')}`,
+                    "errCode": ERROR_CODES.BEAR
+                });
+            }
+            updates.status = status;
+        }
+
+        // Обновление дедлайна
+        if (!deadline !== undefined) {
+            if (deadline === null || deadline === '') {
+                // Разрешаем очистить дедлайн
+                updates.deadline = null;
+            } else {
+                const deadlineDate = new Date(deadline);
+                if (isNaN(deadlineDate.getTime())) {
+                    return res.status(400).json({
+                        "message": "Неверный формат даты дедлайна",
+                        "errCode": ERROR_CODES.BEAR
+                    });
+                }
+                updates.deadline = deadlineDate;
+            }
+        }
+
+        // Обновление исполнителя
+        if (!assigneeId !== undefined) {
+            if (assigneeId === null || assigneeId === '') {
+                // Разрешаем удалить исполнителя
+                updates.assigneeId = null;
+                assigneeChanged = true;
+            } else {
+                const assigneeIdNum = parseInt(assigneeId);
+                if (isNaN(assigneeIdNum)) {
+                    return res.status(400).json({
+                        "message": "ID пользователя должен быть числом",
+                        "errCode": ERROR_CODES.BEAR
+                    });
+                }
+
+                // Проверяем наличие пользователя
+                const assignee = await User.findByPk(assigneeIdNum);
+                if (!assignee) {
+                    return res.status(404).json({
+                        "message": "Пользователь для назначения задачи не найден",
+                        "errCode": ERROR_CODES.ELEPHANT
+                    });
+                }
+
+                // Проверяем, не заблокирован ли пользователь
+                if (assignee.isBlocked) {
+                    return res.status(403).json({
+                        "message": "Пользователь, которому назначается задача, заблокирован",
+                        "errCode": ERROR_CODES.SHARK
+                    });
+                }
+
+                updates.assigneeId = assigneeIdNum;
+                assigneeChanged = true;
+            }
+        }
+
+        // Применяем изменения
+        await task.update(updates);
+
+        // Загружаем обновленную задачу со связанными данными
+        const updatedTask = await Task.findByPk(task.id, {
+            include: [
+                {
+                    model: User,
+                    as: 'Assignee',
+                    attributes: ['id', 'name', 'email']
+                },
+                {
+                    model: User,
+                    as: 'Creator',
+                    attributes: ['id', 'name', 'email']
+                }
+            ]
+        });
+
+        // Формируем ответ
+        const data = {
+            id: updatedTask.id,
+            title: updatedTask.title,
+            description: updatedTask.description,
+            status: updatedTask.status,
+            deadline: updatedTask.deadline,
+            assignee: updatedTask.Assignee ? {
+                id: updatedTask.Assignee.id,
+                name: updatedTask.Assignee.name,
+                email: updatedTask.Assignee.email,
+                avatarUrl: updatedTask.Assignee.avatarUrl
+            } : null,
+            creator: updatedTask.Creator ? {
+                id: updatedTask.Creator.id,
+                name: updatedTask.Creator.name,
+                email: updatedTask.Creator.email,
+                avatarUrl: updatedTask.Creator.avatarUrl
+            } : null,
+            createdAt: updatedTask.createdAt,
+            updatedAt: updatedTask.updatedAt,
+        };
+
+        // Формируем сообщение о том, что изменилось
+        const changedFields = Object.keys(updates);
+        let message = `Задача с номером ${taskId} обновлена`;
+        if (changedFields.length > 0) {
+            message += `. Измененные поля: ${changedFields.join(', ')}`;
+        }
+
+        res.status(200).json({
+            "message": message,
+            "errCode": 0,
+            "data": data
+        });
+
+    } catch (error) {
+        console.error('Ошибка при обновлении задачи:', error);
+        res.status(500).json({
+            "message": "Ошибка сервера при обновлении задачи",
+            "errCode": ERROR_CODES.WHALE
+        });
+    }
 }
 
 module.exports.deleteTaskById = (req, res) => {
