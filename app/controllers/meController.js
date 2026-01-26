@@ -21,7 +21,6 @@ const AVATARS_DIR = path.join(__dirname, '../../uploads/avatars');
 
 module.exports.getProfile = async (req, res) => {
     try {
-
         const data = {
             id: req.user.id,
             name: req.user.name,
@@ -182,24 +181,24 @@ module.exports.updateProfile = async (req, res) => {
             const verificationLink = `${process.env.APP_URL}/api/v1/auth/verify?token=${verificationToken}`;
 
             // Отправляем email с подтверждением
-            EmailService.sendVerificationEmail(email, user.name, verificationLink)
-                .then(result => {
-                    console.log('Письмо с подтверждением нового email отправлено:', result);
-                })
-                .catch(error => {
-                    console.error('Ошибка отправки письма подтверждения:', error);
-                });
+            setImmediate(async () => {
+                try { 
+                    await EmailService.sendVerificationEmail(email, user.name, verificationLink);
+                } catch (error) {
+                    console.error('Ошибка при отправке email:', error);
+                }
+            });
         }
 
         // Если изменился пароль, отправляем уведомление
         if (passwordChanged) {
-            EmailService.sendPasswordChangeEmail(user.email, user.name)
-                .then(result => {
-                    console.log('Уведомление об изменении пароля отправлено:', result);
-                })
-                .catch(error => {
-                    console.error('Ошибка отправки уведомления об изменении пароля:', error);
-                });
+            setImmediate(async () => {
+                try {
+                    await EmailService.sendPasswordChangeEmail(user.email, user.name)
+                } catch (error) {
+                    console.error('Ошибка при отправке email:', error);
+                }
+            });
         }
 
         // Получаем обновленные данные пользователя
@@ -303,13 +302,13 @@ module.exports.deleteProfile = async (req, res) => {
         });
 
         // Отправляем email уведомление об удалении
-        EmailService.sendAccountDeletionEmail(userEmail, userName)
-            .then(result => {
-                console.log('Уведомление об удалении аккаунта отправлено:', result);
-            })
-            .catch(error => {
-                console.error('Ошибка при отправке уведомления:', error);
-            });
+        setImmediate(async () => {
+            try {
+                await EmailService.sendAccountDeletionEmail(userEmail, userName);
+            } catch (error) {
+                console.error('Ошибка при отправке email:', error);
+            }
+        });
 
     } catch (error) {
         console.error('Ошибка при удалении профиля:', error);

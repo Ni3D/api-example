@@ -68,13 +68,13 @@ module.exports.signupUser = async (req, res) => {
         const verificationLink = `${process.env.APP_URL}/api/v1/auth/verify?token=${verificationToken}`;
 
         // Отправляем email с подтверждением
-        EmailService.sendVerificationEmail(email, name, verificationLink)
-            .then(result => {
-                console.log('Письмо с подтверждением отправлено:', result);
-            })
-            .catch(error => {
-                console.error('Ошибка отправки письма:', error);
-            });
+        setImmediate(async () => {
+            try {
+                await EmailService.sendVerificationEmail(email, name, verificationLink);
+            } catch (error) {
+                console.error('Ошибка при отправке email:', error);
+            }
+        });
 
         // Ответ от сервера
         const data = {
@@ -423,13 +423,13 @@ module.exports.verifyEmailResend = async (req, res) => {
         const verificationLink = `${process.env.APP_URL}/api/v1/auth/verify?token=${verificationToken}`;
 
         // Отправляем email
-        EmailService.sendVerificationEmail(email, user.name, verificationLink)
-            .then(result => {
-                console.log('Повторное письмо с подтверждением отправлено:', result);
-            })
-            .catch(error => {
-                console.error('Ошибка отправки повторного письма:', error);
-            });
+        setImmediate(async () => {
+            try {
+                await EmailService.sendVerificationEmail(email, user.name, verificationLink);
+            } catch (error) {
+                console.error('Ошибка при отправке email:', error);
+            }
+        });
 
         // Ответ сервера
         res.status(200).json({
@@ -504,14 +504,14 @@ module.exports.recoveryRequest = async (req, res) => {
         const resetLink = `${process.env.APP_URL}/recovery/request?token=${resetToken}`;
 
         // Отправляем email для сброса пароля
-        EmailService.sendPasswordResetEmail(email, user.name, resetLink)
-            .then(result => {
-                console.log('Письмо для сброса пароля отправлено:', result);
-            })
-            .catch(error => {
-                console.error('Ошибка отправки письма:', error);
-            });
-        
+        setImmediate(async () => {
+            try {
+                await EmailService.sendPasswordResetEmail(email, user.name, resetLink);
+            } catch (error) {
+                console.error('Ошибка при отправке email:', error);
+            }
+        });
+
         //Ответ от сервера
         res.status(200).json({
             "message": "Инструкции по восстановлению пароля отправлены на email",
