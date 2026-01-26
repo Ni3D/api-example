@@ -16,37 +16,69 @@ const ERROR_CODES = {
     WHALE: 5001,    // Серверная ошибка
 };
 
+// Хелперы
+const formatUserResponse = (user) => ({
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    avatarUrl: user.avatarUrl,
+    isEmailVerified: Boolean(user.isEmailVerified),
+    isBlocked: Boolean(user.isBlocked),
+    createdAt: user.createdAt,
+    updatedAt: user.updatedAt
+});
+
+const formatTaskResponse = (task) => ({
+    id: task.id,
+    title: task.title,
+    description: task.description,
+    status: task.status,
+    deadline: task.deadline,
+    assignee: task.Assignee ? {
+        id: task.Assignee.id,
+        name: task.Assignee.name,
+        email: task.Assignee.email,
+        avatarUrl: task.Assignee.avatarUrl || null
+    } : null,
+    creator: task.Creator ? {
+        id: task.Creator.id,
+        name: task.Creator.name,
+        email: task.Creator.email,
+        avatarUrl: task.Creator.avatarUrl || null
+    } : null,
+    createdAt: task.createdAt,
+    updatedAt: task.updatedAt
+});
+
+const deleteFile = async (filePath) => {
+    try {
+        await fs.unlink(filePath);
+    } catch (error) {
+        if (error.code !== 'ENOENT') {
+            console.error('Ошибка при удалении файла:', error);
+        }
+    }
+};
+
 // Путь к папке с аватарами
 const AVATARS_DIR = path.join(__dirname, '../../uploads/avatars');
 
 module.exports.getProfile = async (req, res) => {
     try {
-        const data = {
-            id: req.user.id,
-            name: req.user.name,
-            email: req.user.email,
-            role: req.user.role,
-            avatarUrl: req.user.avatarUrl,
-            isEmailVerified: Boolean(req.user.isEmailVerified),
-            isBlocked: Boolean(req.user.isBlocked),
-            createdAt: req.user.createdAt,
-            updatedAt: req.user.updatedAt
-        }
-
+        const data = formatUserResponse(req.user);
         res.status(200).json({
             "message": "Данные пользователя получены.",
             "errCode": 0,
             "data": data
         });
-
     } catch (error) {
         console.error('Ошибка при получении данных пользователя:', error);
         res.status(500).json({
             "message": "Ошибка сервера при получении данных пользователя",
-            "errCode": 1
+            "errCode": ERROR_CODES.WHALE
         });
     }
-
 }
 
 module.exports.updateProfile = async (req, res) => {
@@ -133,17 +165,7 @@ module.exports.updateProfile = async (req, res) => {
 
         // Ответ, если нет изменений
         if (Object.keys(updates).length === 0) {
-            const userData = {
-                id: user.id,
-                name: user.name,
-                email: user.email,
-                role: user.role,
-                avatarUrl: user.avatarUrl,
-                isEmailVerified: Boolean(user.isEmailVerified),
-                isBlocked: Boolean(user.isBlocked),
-                createdAt: user.createdAt,
-                updatedAt: user.updatedAt
-            };
+            const userData = formatUserResponse(req.user);
 
             return res.status(200).json({
                 "message": "Нет изменений для обновления",
@@ -207,17 +229,7 @@ module.exports.updateProfile = async (req, res) => {
         });
 
         // Формируем ответ
-        const data = {
-            id: updatedUser.id,
-            name: updatedUser.name,
-            email: updatedUser.email,
-            role: updatedUser.role,
-            avatarUrl: updatedUser.avatarUrl,
-            isEmailVerified: Boolean(updatedUser.isEmailVerified),
-            isBlocked: Boolean(updatedUser.isBlocked),
-            createdAt: updatedUser.createdAt,
-            updatedAt: updatedUser.updatedAt
-        };
+        const data = formatUserResponse(updatedUser);
 
         // Сообщение в зависимости от изменений
         let message = "Профиль успешно обновлен";
@@ -334,11 +346,7 @@ module.exports.uploadAvatar = async (req, res) => {
 
         if (!user) {
             // Удаляем загруженный файл, если пользователь не найден
-            try {
-                await fs.unlink(req.file.path);
-            } catch (unlinkError) {
-                console.error('Ошибка при удалении загруженного файла:', unlinkError);
-            }
+            await deleteFile(req.file.path);
 
             return res.status(404).json({
                 "message": "Пользователь не найден",
@@ -348,11 +356,7 @@ module.exports.uploadAvatar = async (req, res) => {
 
         // Проверяем, не заблокирован ли пользователь
         if (user.isBlocked) {
-            try {
-                await fs.unlink(req.file.path);
-            } catch (unlinkError) {
-                console.error('Ошибка при удалении загруженного файла:', unlinkError);
-            }
+            await deleteFile(req.file.path);
 
             return res.status(403).json({
                 "message": "Пользователь заблокирован",
@@ -362,17 +366,9 @@ module.exports.uploadAvatar = async (req, res) => {
 
         // Удаляем старый аватар, если он существует
         if (user.avatarUrl) {
-            try {
-                // Извлекаем имя файла из URL
-                const oldFilename = path.basename(user.avatarUrl);
-                const oldFilePath = path.join(AVATARS_DIR, oldFilename);
-
-                await fs.unlink(oldFilePath);
-            } catch (unlinkError) {
-                if (unlinkError.code !== 'ENOENT') {
-                    console.error('Ошибка  при удалении  старого аватара:', unlinkError);
-                }
-            }
+            const oldFilename = path.basename(user.avatarUrl);
+            const oldFilePath = path.join(AVATARS_DIR, oldFilename);
+            await deleteFile(oldFilePath);
         }
 
         // Форимруем URL для нового аватара
@@ -387,17 +383,7 @@ module.exports.uploadAvatar = async (req, res) => {
         });
 
         // Формируем ответ
-        const data = {
-            id: updatedUser.id,
-            name: updatedUser.name,
-            email: updatedUser.email,
-            role: updatedUser.role,
-            avatarUrl: updatedUser.avatarUrl,
-            isEmailVerified: Boolean(updatedUser.isEmailVerified),
-            isBlocked: Boolean(updatedUser.isBlocked),
-            createdAt: updatedUser.createdAt,
-            updatedAt: updatedUser.updatedAt
-        };
+        const data = formatUserResponse(updatedUser);
 
         res.status(200).json({
             "message": "Аватар успешно загружен",
@@ -408,11 +394,7 @@ module.exports.uploadAvatar = async (req, res) => {
     } catch (error) {
         // Удаляем загруженный файл при ошибке
         if (req.file) {
-            try {
-                await fs.unlink(req.file.path);
-            } catch (unlinkError) {
-                console.error('Ошибка при удалении загруженного файла после ошибки:', unlinkError);
-            }
+            await deleteFile(req.file.path);
         }
 
         console.error('Ошибка при загрузке аватара:', error);
@@ -464,15 +446,8 @@ module.exports.deleteAvatar = async (req, res) => {
         const filename = path.basename(user.avatarUrl);
         const filePath = path.join(AVATARS_DIR, filename);
 
-        try {
-            // Удаляем файл аватара
-            await fs.unlink(filePath);
-        } catch (unlinkError) {
-            // Если файл не найден, продолжаем выполнение
-            if (unlinkError.code !== 'ENOENT') {
-                console.error('Ошибка при удалении файла аватара:', unlinkError);
-            }
-        }
+        // Удаляем файл аватара
+        await deleteFile(filePath);
 
         // Обновляем запись пользователя (удаляем ссылку на аватар)
         await user.update({ avatarUrl: null });
@@ -483,17 +458,7 @@ module.exports.deleteAvatar = async (req, res) => {
         });
 
         // Формируем ответ
-        const data = {
-            id: updatedUser.id,
-            name: updatedUser.name,
-            email: updatedUser.email,
-            role: updatedUser.role,
-            avatarUrl: updatedUser.avatarUrl,
-            isEmailVerified: Boolean(updatedUser.isEmailVerified),
-            isBlocked: Boolean(updatedUser.isBlocked),
-            createdAt: updatedUser.createdAt,
-            updatedAt: updatedUser.updatedAt
-        };
+        const data = formatUserResponse(updatedUser);
 
         res.status(200).json({
             "message": "Аватар успешно удален",
@@ -528,7 +493,15 @@ module.exports.createTask = async (req, res) => {
 
         // Проверяем существование пользователя, которому назначается задача (если указан assigneeId)
         if (assigneeId) {
-            const assignee = await User.findByPk(assigneeId);
+            const assigneeIdNum = parseInt(assigneeId);
+            if (isNaN(assigneeIdNum)) {
+                return res.status(400).json({
+                    "message": "ID пользователя должен быть числом",
+                    "errCode": ERROR_CODES.BEAR
+                });
+            }
+
+            const assignee = await User.findByPk(assigneeIdNum);
             if (!assignee) {
                 return res.status(404).json({
                     "message": "Пользователь для назначения задачи не найден",
@@ -589,36 +562,18 @@ module.exports.createTask = async (req, res) => {
                 {
                     model: User,
                     as: 'Assignee',
-                    attributes: ['id', 'name', 'email']
+                    attributes: ['id', 'name', 'email', 'avatarUrl']
                 },
                 {
                     model: User,
                     as: 'Creator',
-                    attributes: ['id', 'name', 'email']
+                    attributes: ['id', 'name', 'email', 'avatarUrl']
                 }
             ]
         });
 
         // Формируем ответ
-        const data = {
-            id: createdTask.id,
-            title: createdTask.title,
-            description: createdTask.description,
-            status: createdTask.status,
-            deadline: createdTask.deadline,
-            assignee: createdTask.Assignee ? {
-                id: createdTask.Assignee.id,
-                name: createdTask.Assignee.name,
-                email: createdTask.Assignee.email
-            } : null,
-            creator: {
-                id: createdTask.Creator.id,
-                name: createdTask.Creator.name,
-                email: createdTask.Creator.email
-            },
-            createdAt: createdTask.createdAt,
-            updatedAt: createdTask.updatedAt
-        };
+        const data = formatTaskResponse(createdTask);
 
         res.status(201).json({
             "message": "Новая задача создана",
@@ -635,7 +590,7 @@ module.exports.createTask = async (req, res) => {
     }
 }
 
-module.exports.getTask = async (req, res) => {
+module.exports.getTasksList = async (req, res) => {
     try {
         const userId = req.user.id;
 
@@ -652,12 +607,12 @@ module.exports.getTask = async (req, res) => {
                 {
                     model: User,
                     as: 'Assignee',
-                    attributes: ['id', 'name', 'email']
+                    attributes: ['id', 'name', 'email', 'avatarUrl']
                 },
                 {
                     model: User,
                     as: 'Creator',
-                    attributes: ['id', 'name', 'email']
+                    attributes: ['id', 'name', 'email', 'avatarUrl']
                 }
             ],
             order: [['createdAt', 'DESC']]
@@ -672,25 +627,7 @@ module.exports.getTask = async (req, res) => {
             const isAssignee = task.assigneeId === userId;
             const isCreator = task.createdById === userId;
 
-            const taskData = {
-                id: task.id,
-                title: task.title,
-                description: task.description,
-                status: task.status,
-                deadline: task.deadline,
-                assignee: task.Assignee ? {
-                    id: task.Assignee.id,
-                    name: task.Assignee.name,
-                    email: task.Assignee.email
-                } : null,
-                creator: task.Creator ? {
-                    id: task.Creator.id,
-                    name: task.Creator.name,
-                    email: task.Creator.email
-                } : null,
-                createdAt: task.createdAt,
-                updatedAt: task.updatedAt
-            };
+            const taskData = formatTaskResponse(task);
 
             if (isAssignee && isCreator) {
                 otherTasks.push(taskData);
@@ -751,12 +688,12 @@ module.exports.getTaskById = async (req, res) => {
                 {
                     model: User,
                     as: 'Assignee',
-                    attributes: ['id', 'name', 'email']
+                    attributes: ['id', 'name', 'email', 'avatarUrl']
                 },
                 {
                     model: User,
                     as: 'Creator',
-                    attributes: ['id', 'name', 'email']
+                    attributes: ['id', 'name', 'email', 'avatarUrl']
                 }
             ]
         });
@@ -789,35 +726,8 @@ module.exports.getTaskById = async (req, res) => {
             });
         }
 
-        // Определяем роль пользовтеля в этой задаче
-        let userRole = [];
-        if (isAssignee) userRole.push('assignee');
-        if (isCreator) userRole.push('creator');
-
         // Формируем ответ
-        const data = {
-            id: task.id,
-            title: task.title,
-            description: task.description,
-            status: task.status,
-            deadline: task.deadline,
-            assignee: task.Assignee ? {
-                id: task.Assignee.id,
-                name: task.Assignee.name,
-                email: task.Assignee.email,
-                avatarUrl: task.Assignee.avatarUrl
-            } : null,
-            creator: task.Creator ? {
-                id: task.Creator.id,
-                name: task.Creator.name,
-                email: task.Creator.email,
-                avatarUrl: task.Creator.avatarUrl
-            } : null,
-            userRole: userRole,
-            createdAt: task.createdAt,
-            updatedAt: task.updatedAt,
-            deletedAt: task.deletedAt
-        };
+        const data = formatTaskResponse(task);
 
         res.status(200).json({
             "message": `Задача с номером ${taskId} получена`,
@@ -860,8 +770,8 @@ module.exports.updateTaskById = async (req, res) => {
         // Проверям, что есть хотя бы одно поле для обновления
         if (!title && !description && !status && !deadline && !assigneeId) {
             return res.status(400).json({
-                "message": "Необходимо указать хотя бы одно поле для редактироваия",
-                "errCode": ERROR_CODES.ELEPHANT
+                "message": "Необходимо указать хотя бы одно поле для редактирования",
+                "errCode": ERROR_CODES.BEAR
             });
         }
 
@@ -988,38 +898,18 @@ module.exports.updateTaskById = async (req, res) => {
                 {
                     model: User,
                     as: 'Assignee',
-                    attributes: ['id', 'name', 'email']
+                    attributes: ['id', 'name', 'email', 'avatarUrl']
                 },
                 {
                     model: User,
                     as: 'Creator',
-                    attributes: ['id', 'name', 'email']
+                    attributes: ['id', 'name', 'email', 'avatarUrl']
                 }
             ]
         });
 
         // Формируем ответ
-        const data = {
-            id: updatedTask.id,
-            title: updatedTask.title,
-            description: updatedTask.description,
-            status: updatedTask.status,
-            deadline: updatedTask.deadline,
-            assignee: updatedTask.Assignee ? {
-                id: updatedTask.Assignee.id,
-                name: updatedTask.Assignee.name,
-                email: updatedTask.Assignee.email,
-                avatarUrl: updatedTask.Assignee.avatarUrl
-            } : null,
-            creator: updatedTask.Creator ? {
-                id: updatedTask.Creator.id,
-                name: updatedTask.Creator.name,
-                email: updatedTask.Creator.email,
-                avatarUrl: updatedTask.Creator.avatarUrl
-            } : null,
-            createdAt: updatedTask.createdAt,
-            updatedAt: updatedTask.updatedAt,
-        };
+        const data = formatTaskResponse(updatedTask);
 
         // Формируем сообщение о том, что изменилось
         const changedFields = Object.keys(updates);
@@ -1060,7 +950,7 @@ module.exports.deleteTaskById = async (req, res) => {
         const taskIdNum = parseInt(taskId);
         if (isNaN(taskIdNum)) {
             return res.status(400).json({
-                "message": "ID задачи дожен быть числом",
+                "message": "ID задачи должен быть числом",
                 "errCode": ERROR_CODES.BEAR
             });
         }
@@ -1093,7 +983,7 @@ module.exports.deleteTaskById = async (req, res) => {
         if (task.deletedAt) {
             return res.status(410).json({
                 "message": `Задача с ID ${taskId} уже удалена`,
-                "errCode": ERROR_CODES.ELEPHANT,
+                "errCode": ERROR_CODES.ELEPHANT
             });
         }
 
@@ -1107,25 +997,7 @@ module.exports.deleteTaskById = async (req, res) => {
         }
 
         // Получаем данные для ответа
-        const taskData = {
-            id: task.id,
-            title: task.title,
-            description: task.description,
-            status: task.status,
-            deadline: task.deadline,
-            assignee: task.Assignee ? {
-                id: task.Assignee.id,
-                name: task.Assignee.name,
-                email: task.Assignee.email
-            } : null,
-            creator: task.Creator ? {
-                id: task.Creator.id,
-                name: task.Creator.name,
-                email: task.Creator.email
-            } : null,
-            createdAt: task.createdAt,
-            updatedAt: task.updatedAt
-        };
+        const taskData = formatTaskResponse(task);
 
         // Выполняем soft delete задачи
         await task.update({
