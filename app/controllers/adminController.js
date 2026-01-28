@@ -1,6 +1,96 @@
-module.exports.getAllUsers = (req, res) => {
-    const data = [];
-    res.status(200).json({ "message": "Список всех пользователей получен", "errCode": 0, "data": data })
+const { User, Task } = require('../models');
+const { Op }         = require('sequelize');
+
+const ERROR_CODES = {
+    BEAR: 1001,     // Ошибка валидации (обязательные поля)
+    LION: 2001,     // Неверные учетные данные
+    WOLF: 2002,     // Несанкционированный доступ
+    SHARK: 3001,    // Пользователь заблокирован
+    ELEPHANT: 4001, // Ресурс не найден
+    RHINO: 4002,    // Конфликт (дубликат)
+    WHALE: 5001,    // Серверная ошибка,
+};
+
+// Хелперы
+const formatUserResponse = (user) => ({
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    avatarUrl: user.avatarUrl,
+    isEmailVerified: Boolean(user.isEmailVerified),
+    isBlocked: Boolean(user.isBlocked),
+    createdAt: user.createdAt,
+    updatedAt: user.updatedAt
+});
+
+module.exports.getAllUsers = async (req, res) => {
+    try {
+        // Получаем параметры запроса
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 20;
+        const offset = (page - 1) * limit;
+
+        // Фильтры
+        const where = {};
+
+        if (req.query.role) {
+            where.role = req.query.role;
+        }
+
+        if (req.query.isBlocked !== undefined) {
+            where.isBlocked = req.query.isBlocked === 'true';
+        }
+
+        if (req.query.isEmailVerified !== undefined) {
+            where.isEmailVerified = req.query.isEmailVerified === 'true';
+        }
+
+        // Поиск по имени или email
+        if (req.query.search) {
+            const searchTerm = `%${req.query.search}%`;
+            where [Op.or] = [
+                { name: { [Op.like]: searchTerm } },
+                { email: { [Op.like]: searchTerm } }
+            ]
+        }
+
+        // Получаем пользователей с пагинацией
+        const { count, rows: users  } = await User.findAndCountAll({
+            where,
+            attributes: { exclude: ['passwordHash'] },
+            order: [['id', 'ASC']],
+            limit,
+            offset
+        });
+
+        // Формируем ответ
+        const data = users.map(user => formatUserResponse(user));
+
+        // Добавляем информацию о пагинации
+        const pagination = {
+            page,
+            limit,
+            totalItems: count,
+            totalPages: Math.ceil(count / limit),
+            hasNextPage: page * limit < count,
+            hasPreviousPage: page > 1
+        }
+
+        res.status(200).json({
+            "message": "Список всех пользователей получен",
+            "errCode": 0,
+            "data": data,
+            "pagination": pagination
+        });
+
+    } catch (error) {
+        console.error('Ошибка при получении администратором списка пользователей:', error);
+        res.status(500).json({
+            "message": "Ошибка сервера при получении списка пользователей",
+            "errCode": ERROR_CODES.WHALE
+        });
+    }
 }
 
 module.exports.getUserById = (req, res) => {
@@ -15,7 +105,7 @@ module.exports.deleteUser = (req, res) => {
     res.status(200).json({ "message": `Данные пользователя с выбранным Id = ${userId} удалены`, "errCode": 0, "data": data })
 }
 
-module.exports.getTask = (req, res) => {
+module.exports.getTasksList = (req, res) => {
     const data = [];
     res.status(200).json({ "message": "Список задач получен", "errCode": 0, "data": data })
 }
