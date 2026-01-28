@@ -93,10 +93,55 @@ module.exports.getAllUsers = async (req, res) => {
     }
 }
 
-module.exports.getUserById = (req, res) => {
-    const data = [];
-    const userId = req.params.userId;
-    res.status(200).json({ "message": `Данные пользователя с выбранным Id = ${userId} получены`, "errCode": 0, "data": data })
+module.exports.getUserById = async (req, res) => {
+    try {
+        const userId = req.params.userId;
+
+        // Проверяем, передан ли Id
+        if(!userId) {
+            return res.status(400).json({
+                "message": "Id пользователя обязателен",
+                "errCode": ERROR_CODES.BEAR
+            });
+        }
+
+        // Проверяем, что переданный Id является числом
+        const userIdNum = parseInt(userId);
+        if (isNaN(userIdNum)) {
+            return res.status(400).json({
+                "message": "Id пользователя должен быть числом",
+                "errCode": ERROR_CODES.BEAR
+            });
+        }
+
+        //Ищем пользователя в БД
+        const user = await User.findByPk(userIdNum, {
+            attributes: { exclude: ['passwordHash'] }
+        });
+
+        if (!user) {
+            return res.status(404).json({
+                "message": `Пользователь с Id ${userId} не найден`,
+                "errCode": ERROR_CODES.ELEPHANT
+            });
+        }
+
+        // Формируем ответ
+        const data = formatUserResponse(user);
+
+        res.status(200).json({
+            "message": `Данные пользователя с Id ${userId} получены`,
+            "errCode": 0,
+            "data": data
+        });
+
+    } catch (error) {
+        console.error('Ошибка сервера при получении администратором пользователя по Id:', error);
+        res.status(500).json({
+            "message": "Ошибка сервера при получении пользователя",
+            "errCode": ERROR_CODES.WHALE
+        });
+    }
 }
 
 module.exports.deleteUser = (req, res) => {
