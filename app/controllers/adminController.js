@@ -144,10 +144,65 @@ module.exports.getUserById = async (req, res) => {
     }
 }
 
-module.exports.deleteUser = (req, res) => {
-    const data = [];
-    const userId = req.params.userId;
-    res.status(200).json({ "message": `Данные пользователя с выбранным Id = ${userId} удалены`, "errCode": 0, "data": data })
+module.exports.deleteUser = async (req, res) => {
+    try {
+        const userId = req.params.userId;
+
+        // Проверяем, передан ли Id
+        if (!userId) {
+            return res.status(400).json({
+                "message": "Id пользователя оябзателен",
+                "errCode": ERROR_CODES.BEAR
+            });
+        }
+
+        // Проверяем, что Id является числом
+        const userIdNum = parseInt(userId);
+
+        if (isNaN(userIdNum)) {
+            return res.status(400).json({
+                "message": "Id должен быть числом",
+                "errCode": ERROR_CODES.BEAR
+            });
+        }
+
+        // Запрещаем удалять самого себя
+        if (userIdNum === req.user.id) {
+            return res.status(400).json({
+                "message": "Нельзя удалить свой собственный аккаунт через панель администратора",
+                "errCode": ERROR_CODES.BEAR
+            });
+        }
+
+        // Ищем пользователя в БД
+        const user = await User.findByPk(userIdNum);
+
+        if (!user) {
+            return res.status(404).json({
+                "message": `Пользователь с Id ${userId} не найден`,
+                "errCode": ERROR_CODES.ELEPHANT
+            });
+        }
+
+        // Сохраняем данные пользователя для ответа
+        const data = formatUserResponse(user);
+
+        // Удаляем пользователя
+        await user.destroy();
+
+        res.status(200).json({
+            "message": `Пользователь с Id ${userId} удален`,
+            "errCode": 0,
+            "data": data
+        });
+
+    } catch (error) {
+        console.error('Ошибка сервера при удалении администратором пользователя:', error);
+        return res.status(500).json({
+            "message": "Ошибка сервера при удалении пользователя",
+            "errCode": ERROR_CODES.WHALE
+        });
+    }
 }
 
 module.exports.getTasksList = (req, res) => {
