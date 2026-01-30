@@ -24,6 +24,29 @@ const formatUserResponse = (user) => ({
     updatedAt: user.updatedAt
 });
 
+const formatTaskResponse = (task) => ({
+    id: task.id,
+    title: task.title,
+    description: task.description,
+    status: task.status,
+    deadline: task.deadline,
+    assignee: task.Assignee ? {
+        id: task.Assignee.id,
+        name: task.Assignee.name,
+        email: task.Assignee.email,
+        avatarUrl: task.Assignee.avatarUrl || null
+    } : null,
+    creator: task.Creator ? {
+        id: task.Creator.id,
+        name: task.Creator.name,
+        email: task.Creator.email,
+        avatarUrl: task.Creator.avatarUrl || null
+    } : null,
+    createdAt: task.createdAt,
+    updatedAt: task.updatedAt,
+    deletedAt: task.deletedAt
+});
+
 module.exports.getAllUsers = async (req, res) => {
     try {
         // Получаем параметры запроса
@@ -205,9 +228,90 @@ module.exports.deleteUser = async (req, res) => {
     }
 }
 
-module.exports.getTasksList = (req, res) => {
-    const data = [];
-    res.status(200).json({ "message": "Список задач получен", "errCode": 0, "data": data })
+module.exports.getTasksList = async (req, res) => {
+    try {
+        // Получаем параметры запроса
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 20;
+        const offset = (page - 1) * limit;
+
+        // Фильтры
+        const where = { deletedAt: null };
+
+        if (req.query.status) {
+            where.status = req.query.status;
+        }
+
+        if (req.query.assigneeId) {
+            where.assigneeId = parseInt(req.query.assigneeId);
+        }
+
+        if (req.query.createdById) {
+            where.createdById = parseInt(req.query.createdById);
+        }
+
+        // Поиск по названию или описанию
+        if (req.query.search) {
+            const searchTerm = `%${req.query.search}%`;
+            where[Op.or] = [
+                { title: { [Op.like]: searchTerm } },
+                { description: { [Op.like]: searchTerm } }
+            ];
+        }
+
+        // Фильтр по дедлайну
+        if (req.query.deadlineFrom) {
+            where.deadline = where.deadline || {};
+            where.deadline[Op.gte] = new Date(req.query.deadlineFrom);
+        }
+
+        if (req.query.deadlineTo) {
+            where.deadline = where.deadline || {};
+            where.deadline[Op.lte] = new Date(req.query.deadlineTo);
+        }
+
+        // Получаем задачи с пагинацией
+        const { count, rows: tasks } = await Task.findAndCountAll({
+            where,
+            include: [
+                {
+                    model: User,
+                    as: 'Assignee',
+                    attributes: ['id', 'name', 'email', 'avatarUrl']
+                }
+            ],
+            order: [['createdAt', 'DESC']],
+            limit,
+            offset
+        });
+
+        // формируем ответ
+        const data = tasks.map(task => formatTaskResponse(task));
+
+        // Добавляем информацию о пагинации
+        const pagination = {
+            page,
+            limit,
+            totalItems: count,
+            totalPages: Math.ceil(count / limit),
+            hasNextPage: page * limit < count,
+            hasPreviousPage: page > 1
+        };
+
+        res.status(200).json({
+            "message": "Список задач получен",
+            "errCode": 0,
+            "data": data,
+            "pagination": pagination
+        });
+
+    } catch (error) {
+        console.error('Ошибка при получении администратором списка всех задач:', error);
+        res.status(500).json({
+            "message": "Ошибка сервера при получении списка задач",
+            "errCode": ERROR_CODES.WHALE
+        });
+    }
 }
 
 module.exports.getTaskById = (req, res) => {
