@@ -367,7 +367,7 @@ module.exports.getTaskById = async (req, res) => {
             "errCode": 0,
             "data": data
         });
-        
+
     } catch (error) {
         console.error('Ошибка при получении администратором задачи по Id:', error);
         res.status(500).json({
@@ -377,8 +377,138 @@ module.exports.getTaskById = async (req, res) => {
     }
 }
 
-module.exports.getTaskByUserId = (req, res) => {
-    const data = [];
-    const userId = req.params.userId;
-    res.status(200).json({ "message": `Задачи пользователя с Id = ${userId} получены` , "errCode": 0, "data": data })
+module.exports.getTaskByUserId = async (req, res) => {
+    try {
+        const userId = req.params.userId;
+
+        // Проверям, передан ли Id пользователя
+        if (!userId) {
+            return res.status(400).json({
+                "message": "Id пользователя обязателен",
+                "errCode": ERROR_CODES.BEAR
+            });
+        }
+
+        // Проверяем, что id пользователя является числом
+        const userIdNum = parseInt(userId);
+
+        if (isNaN(userIdNum)) {
+            return res.status(400).json({
+                "message": "Id пользователя должен быть числом",
+                "errCode": ERROR_CODES.BEAR
+            });
+        }
+
+        // Ищем пользователя в БД
+        const user = await User.findByPk(userIdNum, {
+            attributes: { exclude: ['passwordHash'] }
+        });
+
+        if (!user) {
+            return res.status(404).json({
+                "message": `Пользователь с Id ${userId} не найден`,
+                "errCode": ERROR_CODES.ELEPHANT
+            });
+        }
+
+        // Получаем параметры запроса
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 20;
+        const offset = (page - 1) * limit;
+        const taskType = req.query.type || 'all';
+
+        // Фильтры
+        const where = { deletedAt: null };
+
+        if (taskType === 'assigned') {
+            where.assigneeId = userIdNum;
+        } else if (taskType === 'created') {
+            where.createdById = userIdNum;
+        } else {
+            where[Op.or] = [
+                { assigneeId: userIdNum },
+                { createdById: userIdNum }
+            ];
+        }
+
+        if (req.query.status) {
+            where.status = req.query.status;
+        }
+
+        // Получаем задачи
+        const { count, rows: tasks } = await Task.findAndCountAll({
+            where,
+            include: [
+                {
+                    model: User,
+                    as: 'Assignee',
+                    attributes: ['id', 'name', 'email', 'avatarUrl']
+                },
+                {
+                    model: User,
+                    as: 'Creator',
+                    attributes: ['id', 'name', 'email', 'avatarUrl']
+                }
+            ],
+            order: [['createdAt', 'DESC']],
+            limit,
+            offset
+        });
+        
+        // Формируем ответ
+        const data = tasks.map(task => formatTaskResponse(task));
+
+        const assignedTasksCount = await Task.count({
+            where: {
+                assigneeId: userIdNum,
+                deletedAt: null
+            }
+        });
+
+        const createdTasksCount = await Task.count({
+            where: {
+                createdById: userIdNum,
+                deletedAt: null
+            }
+        });
+
+        // Добавляем информацию о пагинации
+        const pagination = {
+            page,
+            limit,
+            totalItems: count,
+            totalPages: Math.ceil(count / limit),
+            hasNextPage: page * limit < count,
+            hasPreviousPage: page > 1
+        };
+
+        // Добавляем информацию о пользователе и статистику
+        const userInfo = {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            taskStats: {
+                assignedTasksCount,
+                createdTasksCount,
+                totalTasksCount: assignedTasksCount + createdTasksCount
+            }
+        }
+
+        res.status(200).json({
+            "message": `Задачи пользователя с Id ${userId} получены`,
+            "errCode": 0,
+            "data": {
+                user: userInfo,
+                tasks: data,
+                pagination: pagination
+            }
+        });
+
+    } catch (error) {
+        console.error('Ошибка при получении администратором задач пользователя по его id:', error);
+        res.status(500).json({
+            "message": "Ошибка сервера при получении задач пользователя",
+            "errCode": ERROR_CODES.WHALE
+        });
+    }
 }
