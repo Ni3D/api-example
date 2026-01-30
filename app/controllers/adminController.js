@@ -314,10 +314,67 @@ module.exports.getTasksList = async (req, res) => {
     }
 }
 
-module.exports.getTaskById = (req, res) => {
-    const data = [];
-    const taskId = req.params.taskId;
-    res.status(200).json({ "message": `Задача с номером ${taskId} получена` , "errCode": 0, "data": data })
+module.exports.getTaskById = async (req, res) => {
+    try {
+        const taskId = req.params.taskId;
+
+        // Проверяем, передан ли taskId
+        if (!taskId) {
+            return res.status(400).json({
+                "message": "Id задачи обязателен",
+                "errCode": ERROR_CODES.BEAR
+            });
+        }
+
+        // Проверяем, что taskId является числом
+        const taskIdNum = parseInt(taskId);
+
+        if (isNaN(taskIdNum)) {
+            return res.status(400).json({
+                "message": "Id задачи должен быть числом",
+                "errCode": ERROR_CODES.BEAR
+            });
+        }
+
+        // Ищем задачу в БД
+        const task = await Task.findByPk(taskIdNum, {
+            include: [
+                {
+                    model: User,
+                    as: 'Assignee',
+                    attributes: ['id', 'name', 'email', 'avatarUrl']
+                },
+                {
+                    model: User,
+                    as: 'Creator',
+                    attributes: ['id', 'name', 'email', 'avatarUrl']
+                }
+            ]
+        });
+
+        if (!task) {
+            return res.status(404).json({
+                "message": `Задача с Id ${taskId} не найдена`,
+                "errCode": ERROR_CODES.ELEPHANT
+            });
+        }
+
+        // Формируем ответ
+        const data = formatTaskResponse(task);
+
+        res.status(200).json({
+            "message": `Задача с Id ${taskId} получена`,
+            "errCode": 0,
+            "data": data
+        });
+        
+    } catch (error) {
+        console.error('Ошибка при получении администратором задачи по Id:', error);
+        res.status(500).json({
+            "message": "Ошибка сервера при получении задачи",
+            "errCode": ERROR_CODES.WHALE
+        });
+    }
 }
 
 module.exports.getTaskByUserId = (req, res) => {
