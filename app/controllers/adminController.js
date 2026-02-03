@@ -174,7 +174,7 @@ module.exports.deleteUser = async (req, res) => {
         // Проверяем, передан ли Id
         if (!userId) {
             return res.status(400).json({
-                "message": "Id пользователя оябзателен",
+                "message": "Id пользователя обязателен",
                 "errCode": ERROR_CODES.BEAR
             });
         }
