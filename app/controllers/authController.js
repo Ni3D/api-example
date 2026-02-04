@@ -146,7 +146,7 @@ module.exports.signinUser = async (req, res) => {
                 "errCode": ERROR_CODES.BEAR
             });
         }
-        
+
         // Проверка блокировки пользователя
         if (user.isBlocked) {
             return res.status(403).json({
@@ -232,7 +232,7 @@ module.exports.signinUser = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Ошибка при входе:', error);
+        console.error('Ошибка при аутентификации:', error);
         res.status(500).json({
             "message": "Ошибка сервера при аутентификации",
             "errCode": ERROR_CODES.WHALE
