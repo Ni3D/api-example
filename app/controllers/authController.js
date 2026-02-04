@@ -139,6 +139,14 @@ module.exports.signinUser = async (req, res) => {
             });
         }
 
+        // Проверка подтверждения email
+        if (!user.isEmailVerified) {
+            return res.status(400).json({
+                "message": "Email не подтвержден. Подтвердите email, перейдя по ссылке из письма, отправленного на почтовый ящик",
+                "errCode": ERROR_CODES.BEAR
+            });
+        }
+        
         // Проверка блокировки пользователя
         if (user.isBlocked) {
             return res.status(403).json({
