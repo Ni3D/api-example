@@ -2,18 +2,10 @@ const bcrypt = require('bcrypt');
 const crypto = require('crypto');
 const { Op } = require('sequelize');
 const { User, RefreshToken, EmailVerificationToken, PasswordResetToken } = require('../models');
-const JWTService   = require('../services/jwt');
+const JWTService = require('../services/jwt');
 const EmailService = require('../services/emailService');
-
-const ERROR_CODES = {
-    BEAR: 1001,     // Ошибка валидации (обязательные поля)
-    LION: 2001,     // Неверные учетные данные
-    WOLF: 2002,     // Несанкционированный доступ
-    SHARK: 3001,    // Пользователь заблокирован
-    ELEPHANT: 4001, // Ресурс не найден
-    RHINO: 4002,    // Конфликт (дубликат)
-    WHALE: 5001,    // Серверная ошибка
-}
+const { ERROR_CODES } = require('../utils/errorCodes');
+const { timeParser } = require('../utils/timeParser');
 
 // Регистрация пользователя
 module.exports.signupUser = async (req, res) => {
@@ -31,18 +23,18 @@ module.exports.signupUser = async (req, res) => {
 
         // Поиск указанного email в базе перед регистрацией
         const emailCheck = await User.findOne({ where: { email } });
-        
+
         if (emailCheck) {
             return res.status(409).json({
                 "message": "Пользователь с данным email уже зарегистрирован",
                 "errCode": ERROR_CODES.RHINO
             });
         }
-        
+
         // Хэширование пароля
         const saltRounds = 10;
         const passwordHash = await bcrypt.hash(password, saltRounds);
-        
+
         // Создание пользователя в базе данных
         const user = await User.create({
             email,
@@ -60,7 +52,7 @@ module.exports.signupUser = async (req, res) => {
         await EmailVerificationToken.create({
             userId: user.id,
             token: verificationToken,
-            expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 часа
+            expiresAt: new Date(Date.now() + timeParser(process.env.EMAIL_VERIFICATION_EXPIRES)),
             usedAt: null
         });
 
@@ -91,7 +83,7 @@ module.exports.signupUser = async (req, res) => {
 
         res.status(201).json({
             "message": "Регистрация успешна! Подтвердите учетную запись, " +
-                       "перейдя по ссылке из письма, отправленного на указанный почтовый ящик.",
+                "перейдя по ссылке из письма, отправленного на указанный почтовый ящик.",
             "errCode": 0,
             "data": data
         });
@@ -168,7 +160,7 @@ module.exports.signinUser = async (req, res) => {
 
         // Ограничение: максимум 5 активных токенов на пользователя
         const maxTokensPerUser = 5;
-        
+
         // Получаем текущее количество активных токенов
         const activeTokens = await RefreshToken.count({
             where: {
@@ -195,14 +187,14 @@ module.exports.signinUser = async (req, res) => {
         }
 
         // Генерация токенов
-        const accessToken  = JWTService.generateAccessToken(user.id);
+        const accessToken = JWTService.generateAccessToken(user.id);
         const refreshToken = JWTService.generateRefreshToken(user.id);
 
         // Сохранение refresh токена в базу данных
         await RefreshToken.create({
             userId: user.id,
             token: refreshToken,
-            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 дней
+            expiresAt: new Date(Date.now() + timeParser(process.env.JWT_REFRESH_EXPIRES || '7d')),
             isRevoked: false
         });
 
@@ -316,7 +308,7 @@ module.exports.verifyEmail = async (req, res) => {
                 token: token,
                 usedAt: null,
                 expiresAt: { [Op.gt]: new Date() }
-            },            
+            },
             include: [{ model: User }]
         });
 
@@ -416,14 +408,14 @@ module.exports.verifyEmailResend = async (req, res) => {
             }
         });
 
-        // Генерируем новый токен
+        // Генерируем новый токен подтверждения email
         const verificationToken = crypto.randomBytes(32).toString('hex');
 
-        // Сохраняем новый токен в базу
+        // Сохраняем новый токен подтверждения email в базу
         await EmailVerificationToken.create({
             userId: user.id,
             token: verificationToken,
-            expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 часа
+            expiresAt: new Date(Date.now() + timeParser(process.env.EMAIL_VERIFICATION_EXPIRES)),
             usedAt: null
         });
 
@@ -488,7 +480,7 @@ module.exports.recoveryRequest = async (req, res) => {
             });
         }
 
-        // Удаляем старый токен восстановления
+        // Удаляем старый токен восстановления пароля
         await PasswordResetToken.destroy({
             where: {
                 userId: user.id,
@@ -497,21 +489,21 @@ module.exports.recoveryRequest = async (req, res) => {
             }
         });
 
-        // Генерируем токен восстановления
+        // Генерируем токен восстановления пароля
         const resetToken = crypto.randomBytes(32).toString('hex');
 
-        // Сохраняем токен в базу
+        // Сохраняем токен восстановления пароля в базу
         await PasswordResetToken.create({
             userId: user.id,
             token: resetToken,
-            expiresAt: new Date(Date.now() + 60 * 60 * 1000), // 1 час
+            expiresAt: new Date(Date.now() + timeParser(process.env.PASSWORD_RESET_EXPIRES)),
             usedAt: null
         });
 
-        // Формируем ссылку для сброса пароля
+        // Формируем ссылку для восстановления пароля
         const resetLink = `${process.env.APP_URL}/recovery/request?token=${resetToken}`;
 
-        // Отправляем email для сброса пароля
+        // Отправляем email для восстановления пароля
         setImmediate(async () => {
             try {
                 await EmailService.sendPasswordResetEmail(email, user.name, resetLink);
@@ -525,6 +517,7 @@ module.exports.recoveryRequest = async (req, res) => {
             "message": "Инструкции по восстановлению пароля отправлены на email",
             "errCode": 0
         });
+
     } catch (error) {
         console.error('Ошибка при запросе восстановления пароля:', error);
         res.status(500).json({

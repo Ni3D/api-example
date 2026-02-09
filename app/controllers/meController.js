@@ -1,65 +1,12 @@
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
-const path   = require('path');
-const fs     = require('fs').promises;
+const path = require('path');
 const { Op } = require('sequelize');
 const { User, EmailVerificationToken, Task } = require('../models');
 const EmailService = require('../services/emailService');
-
-const ERROR_CODES = {
-    BEAR: 1001,     // Ошибка валидации
-    LION: 2001,     // Неверные учетные данные
-    WOLF: 2002,     // Несанкционированный доступ
-    SHARK: 3001,    // Пользователь заблокирован
-    ELEPHANT: 4001, // Ресурс не найден
-    RHINO: 4002,    // Конфликт (дубликат)
-    WHALE: 5001,    // Серверная ошибка
-};
-
-// Хелперы
-const formatUserResponse = (user) => ({
-    id: user.id,
-    name: user.name,
-    email: user.email,
-    role: user.role,
-    avatarUrl: user.avatarUrl,
-    isEmailVerified: Boolean(user.isEmailVerified),
-    isBlocked: Boolean(user.isBlocked),
-    createdAt: user.createdAt,
-    updatedAt: user.updatedAt
-});
-
-const formatTaskResponse = (task) => ({
-    id: task.id,
-    title: task.title,
-    description: task.description,
-    status: task.status,
-    deadline: task.deadline,
-    assignee: task.Assignee ? {
-        id: task.Assignee.id,
-        name: task.Assignee.name,
-        email: task.Assignee.email,
-        avatarUrl: task.Assignee.avatarUrl || null
-    } : null,
-    creator: task.Creator ? {
-        id: task.Creator.id,
-        name: task.Creator.name,
-        email: task.Creator.email,
-        avatarUrl: task.Creator.avatarUrl || null
-    } : null,
-    createdAt: task.createdAt,
-    updatedAt: task.updatedAt
-});
-
-const deleteFile = async (filePath) => {
-    try {
-        await fs.unlink(filePath);
-    } catch (error) {
-        if (error.code !== 'ENOENT') {
-            console.error('Ошибка при удалении файла:', error);
-        }
-    }
-};
+const { ERROR_CODES } = require('../utils/errorCodes');
+const { deleteFile } = require('../utils/deleteFile');
+const { formatUserResponse, formatTaskResponse } = require('../utils/responseFormatter');
 
 // Путь к папке с аватарами
 const AVATARS_DIR = path.join(__dirname, '../../uploads/avatars');
@@ -204,7 +151,7 @@ module.exports.updateProfile = async (req, res) => {
 
             // Отправляем email с подтверждением
             setImmediate(async () => {
-                try { 
+                try {
                     await EmailService.sendVerificationEmail(email, user.name, verificationLink);
                 } catch (error) {
                     console.error('Ошибка при отправке email:', error);

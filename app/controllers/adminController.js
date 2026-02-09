@@ -1,51 +1,7 @@
 const { User, Task } = require('../models');
-const { Op }         = require('sequelize');
-
-const ERROR_CODES = {
-    BEAR: 1001,     // Ошибка валидации (обязательные поля)
-    LION: 2001,     // Неверные учетные данные
-    WOLF: 2002,     // Несанкционированный доступ
-    SHARK: 3001,    // Пользователь заблокирован
-    ELEPHANT: 4001, // Ресурс не найден
-    RHINO: 4002,    // Конфликт (дубликат)
-    WHALE: 5001,    // Серверная ошибка,
-};
-
-// Хелперы
-const formatUserResponse = (user) => ({
-    id: user.id,
-    name: user.name,
-    email: user.email,
-    role: user.role,
-    avatarUrl: user.avatarUrl,
-    isEmailVerified: Boolean(user.isEmailVerified),
-    isBlocked: Boolean(user.isBlocked),
-    createdAt: user.createdAt,
-    updatedAt: user.updatedAt
-});
-
-const formatTaskResponse = (task) => ({
-    id: task.id,
-    title: task.title,
-    description: task.description,
-    status: task.status,
-    deadline: task.deadline,
-    assignee: task.Assignee ? {
-        id: task.Assignee.id,
-        name: task.Assignee.name,
-        email: task.Assignee.email,
-        avatarUrl: task.Assignee.avatarUrl || null
-    } : null,
-    creator: task.Creator ? {
-        id: task.Creator.id,
-        name: task.Creator.name,
-        email: task.Creator.email,
-        avatarUrl: task.Creator.avatarUrl || null
-    } : null,
-    createdAt: task.createdAt,
-    updatedAt: task.updatedAt,
-    deletedAt: task.deletedAt
-});
+const { Op } = require('sequelize');
+const { ERROR_CODES } = require('../utils/errorCodes');
+const { formatUserResponse, formatTaskResponse } = require('../utils/responseFormatter');
 
 module.exports.getAllUsers = async (req, res) => {
     try {
@@ -72,14 +28,14 @@ module.exports.getAllUsers = async (req, res) => {
         // Поиск по имени или email
         if (req.query.search) {
             const searchTerm = `%${req.query.search}%`;
-            where [Op.or] = [
+            where[Op.or] = [
                 { name: { [Op.like]: searchTerm } },
                 { email: { [Op.like]: searchTerm } }
             ]
         }
 
         // Получаем пользователей с пагинацией
-        const { count, rows: users  } = await User.findAndCountAll({
+        const { count, rows: users } = await User.findAndCountAll({
             where,
             attributes: { exclude: ['passwordHash'] },
             order: [['id', 'ASC']],
@@ -121,7 +77,7 @@ module.exports.getUserById = async (req, res) => {
         const userId = req.params.userId;
 
         // Проверяем, передан ли Id
-        if(!userId) {
+        if (!userId) {
             return res.status(400).json({
                 "message": "Id пользователя обязателен",
                 "errCode": ERROR_CODES.BEAR
@@ -454,7 +410,7 @@ module.exports.getTaskByUserId = async (req, res) => {
             limit,
             offset
         });
-        
+
         // Формируем ответ
         const data = tasks.map(task => formatTaskResponse(task));
 
