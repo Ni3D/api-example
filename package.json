@@ -3,9 +3,10 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "start:dev": "nodemon index",
-    "start": "node index",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start:dev": "set NODE_ENV=development&& nodemon index.js",
+    "start:prod": "set NODE_ENV=production&& node index.js",
+    "migrate:dev": "npx sequelize-cli db:migrate --env development",
+    "migrate:prod": "npx sequelize-cli db:migrate --env production"
   },
   "repository": {
     "type": "git",
