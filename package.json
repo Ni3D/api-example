@@ -6,7 +6,9 @@
     "start:dev": "set NODE_ENV=development&& nodemon index.js",
     "start:prod": "set NODE_ENV=production&& node index.js",
     "migrate:dev": "npx sequelize-cli db:migrate --env development",
-    "migrate:prod": "npx sequelize-cli db:migrate --env production"
+    "migrate:prod": "npx sequelize-cli db:migrate --env production",
+    "create-admin:dev": "npx sequelize-cli db:seed --seed 20260224140741-create-admin-user.js --env development",
+    "create-admin:prod": "npx sequelize-cli db:seed --seed 20260224140741-create-admin-user.js --env production"
   },
   "repository": {
     "type": "git",
